@@ -1,0 +1,113 @@
+---
+title: "GBP Auditor: Profile Signals and Local SEO Opportunities"
+description: "Discover how GBP Auditor analyzes description, photos, hours, and attributes, then surfaces structured Local SEO Opportunities with issue, impact, and suggested action."
+sidebarTitle: "Profile Signals"
+---
+
+GBP Auditor evaluates several individual profile signals that do not fit into category, service, or review analysis. These signals include the business description, photos, hours, and attributes. The extension also compiles a structured Opportunities list that translates individual findings into actionable recommendations. Every signal is read from public Maps page content. No data is invented, and no causation is claimed.
+
+## Description analysis
+
+The business description is analyzed if it is visible on the Maps page. If the description is not shown, the extension reports **"Not detected"** and the Description section contributes zero points to the [Audit Score](/product/audit-scoring).
+
+### Checks
+
+| Check | Criteria | Example message |
+| --- | --- | --- |
+| Length | Ideal range is 100 to 750 characters | "Description length is outside the ideal range." |
+| Business Name | Business name appears in description | "Business name not found in description." |
+| Service Relevance | Mentions at least one visible service | "Description could reference key services." |
+| Location Relevance | Mentions city, neighborhood, or local area | "Description could include local area references." |
+| Keyword Stuffing | No suspicious repetition of keywords | "Description may contain keyword stuffing." |
+
+### Description Score
+
+The Description section is worth 5 points. Each check contributes equally. A single **WARNING** on any check reduces the section score to 2; a **MISSING** on any check reduces it to 0.
+
+## Photos analysis
+
+Photos are evaluated for presence, the visibility of a profile or cover image, and approximate count.
+
+### Checks
+
+| Check | Criteria | Example message |
+| --- | --- | --- |
+| Presence | Photos section is visible on the page | "No photos detected." |
+| Profile/Cover | A clear cover or profile photo is visible | "No clear cover/profile photo detected." |
+| Approximate Count | More than 10 photos is ideal | "Photo count appears low. Adding more can improve engagement." |
+
+The extension never claims an exact photo count because Google may load additional images dynamically. If the count cannot be estimated, it shows **"Approximate"** or **"Not detected"**.
+
+## Hours analysis
+
+Operating hours and special hours are evaluated for completeness and consistency.
+
+### Checks
+
+| Check | Criteria | Example message |
+| --- | --- | --- |
+| Regular Hours | Hours listed for all seven days | "Hours incomplete for some days." |
+| Special Hours | Holiday or temporary hours are set | "Special hours not detected. Setting holiday hours can improve customer trust." |
+| Consistency | No conflicting open/close patterns | "Potential inconsistency detected in hours." |
+
+If hours are not visible, the extension reports **"No hours detected."**
+
+## Attributes analysis
+
+Attributes are the feature labels Google shows on a profile, such as "Wheelchair accessible" or "Onsite services."
+
+### Checks
+
+| Check | Criteria | Example message |
+| --- | --- | --- |
+| Presence | At least one attribute is visible | "No attributes detected." |
+| Coverage | Multiple attributes are listed | "Few attributes visible. Adding more can help customers filter results." |
+
+Only attributes visible on the page are recorded. The extension does not attempt to infer hidden attributes.
+
+## Local SEO Opportunities
+
+The Opportunities page compiles all findings from the audit into a prioritized list. Each opportunity has three parts:
+
+- **Issue**: what was detected
+- **Why it matters**: the potential impact in cautious language
+- **Suggested action**: a concrete next step the user can take
+
+### Example opportunities table
+
+| Issue | Why it matters | Suggested action |
+| --- | --- | --- |
+| Missing website | A website helps customers learn more and may support local trust signals | Add a verified website to the Google Business Profile |
+| Missing services | Services help customers match needs with offerings | Add relevant services that reflect what the business provides |
+| Low review volume | More reviews can improve credibility and customer confidence | Encourage satisfied customers to leave reviews |
+| Low rating vs competitors | Competitors have higher ratings, which may affect selection | Address customer feedback to improve rating over time |
+| Missing category opportunity | Competitors use categories that may increase discoverability | Evaluate additional categories that match the business |
+| Missing hours | Customers may visit when the business is closed | Add or complete operating hours |
+| NAP mismatch | Inconsistent NAP may reduce trust in local search signals | Compare Maps and website NAP and update any discrepancies |
+| Weak description | A short or generic description may not communicate value | Expand the description with services and local context |
+| Few photos | Profiles with more photos may appear more complete and inviting | Upload additional relevant photos |
+
+### Opportunity statuses
+
+Opportunities are generated only from checks that returned **WARNING**, **MISSING**, or **OPPORTUNITY**. **PASS** findings do not generate opportunities. Each opportunity links back to the relevant audit section for context.
+
+### No causation language
+
+Every opportunity uses cautious phrasing. The extension must say **"may improve"**, **"can support"**, or **"potential optimization"**. It must never say "will improve rankings", "guarantees more calls", or make any causal claim about search position.
+
+### Proposed data model
+
+```ts
+interface LocalSEOOpportunity {
+  id: string;
+  section: string;
+  issue: string;
+  whyItMatters: string;
+  suggestedAction: string;
+  severity: "high" | "medium" | "low";
+}
+```
+
+## Integration with the audit dashboard
+
+The Quick Signals checklist in the audit dashboard header shows a count of open opportunities. Clicking the count navigates to the full Opportunities page. Each audit section card also displays its own opportunity count, if any, as a clickable badge.

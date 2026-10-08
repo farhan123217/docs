@@ -1,0 +1,138 @@
+---
+title: "Testing Strategy, Fixtures, and Quality Gates"
+sidebarTitle: "Testing"
+description: "GBP Auditor testing strategy: parser unit tests with Vitest and jsdom, mocked Google Maps DOM fixtures, test matrix, and code-quality rules."
+---
+
+GBP Auditor relies heavily on DOM parsing, so automated tests must validate extraction logic against realistic page structures without making live network requests. This page defines the test stack, fixture strategy, and quality gates that keep the extension reliable as Google Maps evolves.
+
+## Test stack
+
+| Layer | Tool | Purpose |
+| --- | --- | --- |
+| Unit tests | Vitest | Fast parser and utility tests |
+| DOM environment | jsdom | Simulated browser for content-script logic |
+| Assertions | `@testing-library/jest-dom` | Readable DOM matchers (optional) |
+| Type checking | `tsc --noEmit` | Strict TypeScript validation |
+| Lint | ESLint + `typescript-eslint` | Consistent code style and rule enforcement |
+| Build | `vite build` | Ensures the extension bundles without errors |
+
+All tests run locally with `npm test`. CI is not required, but the same commands should pass before any release.
+
+## Test matrix
+
+The following areas must have dedicated test coverage.
+
+| Area | What to test | Fixture needed |
+| --- | --- | --- |
+| Page detection | `detectPage` returns `BUSINESS`, `SEARCH`, or `UNKNOWN` for given URLs and DOM markers | Minimal HTML with `data-ved` markers |
+| Business name extraction | `getBusinessName` returns the correct name using multiple fallback selectors | Mocked Maps business panel HTML |
+| Rating extraction | `getRating` parses star text, aria-labels, and data attributes into a number | Panel HTML with 4.7 star display |
+| Review count extraction | `getReviewCount` handles counts with commas, parentheses, and localized text | Panel HTML with "128 reviews" |
+| Category extraction | `getCategory` finds the primary category and additional categories | Panel HTML with category chips |
+| Business detection end-to-end | Given a full fixture, all fields are extracted and no required field crashes | Full business panel snapshot |
+| Score calculation | `calculateScore` returns the expected 0–100 total and correct per-section breakdown | Hardcoded `BusinessProfile` object |
+| CSV export | `generateCsv` produces valid RFC 4180 output with proper escaping | Array of `CsvRow` objects |
+| JSON export | `generateJson` produces the expected shape and includes all required keys | Hardcoded `AuditResult` object |
+| Storage | Settings round-trip through `chrome.storage.local` mock | Mocked `chrome.storage` API |
+
+## Mocked DOM fixtures
+
+Fixtures are static HTML files stored in `/tests/fixtures` and loaded into jsdom per test. They represent real Google Maps page fragments captured at a point in time and sanitized to remove personal data.
+
+### Fixture structure
+
+```text
+tests/
+  fixtures/
+    maps-business-panel.html
+    maps-search-results.html
+    maps-category-panel.html
+  unit/
+    parser.spec.ts
+    score.spec.ts
+    export.spec.ts
+    storage.spec.ts
+```
+
+### Loading a fixture
+
+```typescript
+// tests/unit/parser.spec.ts (proposed/spec)
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
+import { beforeEach, describe, expect, it } from 'vitest';
+
+function loadFixture(name: string): string {
+  return readFileSync(resolve(__dirname, `../fixtures/${name}`), 'utf-8');
+}
+
+beforeEach(() => {
+  document.body.innerHTML = loadFixture('maps-business-panel.html');
+});
+```
+
+### Example test
+
+```typescript
+// tests/unit/parser.spec.ts (proposed/spec)
+import { describe, expect, it } from 'vitest';
+import { GoogleMapsParser } from '../../src/services/GoogleMapsParser';
+
+describe('GoogleMapsParser', () => {
+  it('extracts business name from heading fallback', () => {
+    document.body.innerHTML = `
+      <div role="main">
+        <h1 class="DUwDvf">Acme Roofing</h1>
+      </div>
+    `;
+    const parser = new GoogleMapsParser();
+    expect(parser.getBusinessName()).toBe('Acme Roofing');
+  });
+
+  it('returns null when business name is not found', () => {
+    document.body.innerHTML = `<div role="main"></div>`;
+    const parser = new GoogleMapsParser();
+    expect(parser.getBusinessName()).toBeNull();
+  });
+
+  it('parses rating from aria-label when visible text is absent', () => {
+    document.body.innerHTML = `
+      <div role="main">
+        <span aria-label="4.7 stars">4.7</span>
+      </div>
+    `;
+    const parser = new GoogleMapsParser();
+    expect(parser.getRating()).toBe(4.7);
+  });
+});
+```
+
+## Quality gates
+
+Before any change is considered complete, it must pass the following gates:
+
+1. **TypeScript strict mode** passes with `tsc --noEmit`.
+2. **No dead code** — unused imports, variables, and functions are removed or suppressed with explicit justification.
+3. **No fake API responses** — test fixtures use real DOM structures; mock data for score/export tests is explicitly labeled as test data in the code.
+4. **No placeholder functionality presented as complete** — UI elements that are not wired to real logic are hidden behind feature flags or marked with `TODO` in source control, not shown to users.
+5. **All new parser strategies have a corresponding fixture test** — if a new fallback selector is added, a fixture must exercise it.
+
+## Snapshot testing policy
+
+Snapshot tests are allowed for JSON export shape validation, but they must be reviewed in PRs and updated deliberately. DOM snapshots are discouraged because Maps HTML changes frequently; prefer explicit assertions on parsed values.
+
+## Manual smoke tests
+
+Automated tests cover logic, but the following manual checks should be performed before each milestone release:
+
+- Open a real Google Maps business page and verify the side panel detects it.
+- Confirm the parser extracts name, category, rating, and review count without errors.
+- Run an audit and verify the score is between 0 and 100.
+- Export CSV and JSON and open them to confirm structure.
+- Verify the extension works in dark mode and at 320px panel width.
+
+## Next steps
+
+- Review performance and error-handling patterns on the [Performance and Errors](/engineering/performance-errors) page.
+- Review the 16-phase development plan on the [Roadmap Phases](/roadmap/phases) page.

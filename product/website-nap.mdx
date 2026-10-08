@@ -1,0 +1,118 @@
+---
+title: "GBP Auditor: Website and NAP Audit"
+description: "Understand how GBP Auditor performs NAP consistency checks and basic website SEO snapshots using user-approved fetches, normalization rules, and schema detection."
+sidebarTitle: "Website and NAP"
+---
+
+GBP Auditor helps Local SEO professionals verify that a business's Name, Address, and Phone (NAP) are consistent between its Google Maps listing and its own website. It also captures a lightweight SEO snapshot of the website homepage, including title tags, meta descriptions, headings, and structured data. All website fetches require explicit user approval, and the extension never crawls beyond a single page.
+
+## NAP audit
+
+The NAP audit compares the business name, address, and phone number shown on Google Maps against the same values detected on the linked website.
+
+### Fields compared
+
+- **Business Name**: the exact or near-exact name on Maps vs the site
+- **Address**: the street address, city, and state on Maps vs the site
+- **Phone**: the phone number on Maps vs the site
+
+### Normalization rules
+
+Before comparison, values are normalized to reduce false mismatches:
+
+| Field | Normalization |
+| --- | --- |
+| Phone | strip non-digit characters, compare 10 or 11 digit sequences |
+| Address | lowercase, remove punctuation, standardize abbreviations ("st" to "street", "ave" to "avenue") |
+| Name | lowercase, remove punctuation, trim whitespace |
+
+### Audit statuses
+
+Each NAP field receives one of three statuses:
+
+- **Match**: values are the same after normalization
+- **Possible mismatch**: values differ after normalization; user should verify manually
+- **Unable to verify**: the website did not contain the field, or the fetch was not approved
+
+### Example NAP result
+
+```ts
+interface NAPResult {
+  name: { maps: string; website: string; status: "match" | "mismatch" | "unable_to_verify" };
+  address: { maps: string; website: string; status: "match" | "mismatch" | "unable_to_verify" };
+  phone: { maps: string; website: string; status: "match" | "mismatch" | "unable_to_verify" };
+}
+```
+
+Example output:
+
+```text
+Name     Match            "Sunny Dental Clinic"
+Address  Possible mismatch "123 main st austin tx" vs "123 main street, austin, texas"
+Phone    Match            "5125550100"
+```
+
+### User approval for website fetch
+
+Website analysis is gated by explicit user consent. The first time a user runs a NAP or Website audit, the extension shows a dialog explaining:
+
+- The fetch will target the business's own public homepage
+- No cookies, credentials, or browsing history are sent
+- The result is stored locally and never transmitted to an external server
+
+The user must click **Approve** before the fetch proceeds. This approval can be revoked in [Settings](/product/history-settings).
+
+## Website SEO snapshot
+
+If the user approves the fetch, the extension requests the homepage and extracts a lightweight set of SEO signals. It does **not** crawl internal links, execute JavaScript beyond the initial response, or attempt to bypass any access controls.
+
+### Checks performed
+
+| Check | PASS criteria | WARNING criteria |
+| --- | --- | --- |
+| Title | `<title>` present and contains business name | Missing or generic |
+| Meta Description | meta description present | Missing |
+| H1 | exactly one H1, relevant to business | Missing or multiple H1s |
+| Business Name on Page | business name appears in body text | Not found |
+| Phone on Page | phone appears in body text | Not found |
+| Address on Page | address or city appears in body text | Not found |
+| Service Keywords | body text contains terms matching visible services | Few or no matches |
+| Contact Page | link containing "contact" found | Not found |
+| LocalBusiness / Organization Schema | JSON-LD or microdata detected | Not detected |
+
+### Schema detection
+
+The extension searches for `application/ld+json` script tags and common microdata attributes. It looks specifically for `@type` values of **LocalBusiness**, **Organization**, **Dentist**, **DentalClinic**, or similar concrete types. If a schema is found but the type is too generic (e.g., "Thing"), it returns **WARNING** with the message: "Schema detected but type is not specific."
+
+### Example snapshot result
+
+```ts
+interface WebsiteSnapshot {
+  url: string;
+  title: { text: string; containsBusinessName: boolean };
+  metaDescription: { text: string; present: boolean };
+  h1: { text: string; count: number };
+  businessNameFound: boolean;
+  phoneFound: boolean;
+  addressFound: boolean;
+  serviceKeywordsFound: string[];
+  contactPageFound: boolean;
+  schema: { present: boolean; types: string[] };
+}
+```
+
+## Error handling
+
+If the fetch fails or the page blocks the request, the extension returns **"Unable to verify"** for all website-dependent fields. It does not retry aggressively, and it does not attempt to bypass CAPTCHA or bot protection. The audit continues; only the website section is marked incomplete.
+
+## Fetch policy
+
+- **Scope**: single page, the URL linked from Maps
+- **Method**: `GET` via `fetch()` or `XMLHttpRequest` inside the content script context, gated by optional host permissions requested at runtime
+- **Storage**: result stored in IndexedDB with the audit record
+- **Retention**: retained until the user deletes the audit or clears extension data
+- **No external transmission**: results never leave the browser
+
+## Integration with scoring
+
+Website and NAP results feed into the [Audit Scoring](/product/audit-scoring) system. The Website section is worth 10 points. A NAP mismatch does not reduce the score directly, but it surfaces as an opportunity on the [Opportunities](/product/profile-signals) page with the message: "NAP mismatch detected between Maps and website. Consistent NAP may improve local trust signals."

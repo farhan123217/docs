@@ -1,0 +1,201 @@
+---
+title: "Reports and Export: Print, PDF, CSV, and JSON"
+sidebarTitle: "Reports and Export"
+description: "How GBP Auditor formats audit reports and exports results as PDF, CSV, and JSON. Includes report sections, column schemas, and a sample JSON shape."
+---
+
+GBP Auditor turns parsed Google Maps data into structured audit reports that you can view, print, save as PDF, copy to the clipboard, or export as CSV and JSON. All export and print operations run locally in the browser using standard Web APIs, so no backend or paid service is required.
+
+## Report layout
+
+Every generated report uses the same fixed header and section order so results are predictable for stakeholders and clients.
+
+### Header
+
+- **Report title**: "GBP Audit Report" (swappable via branding config)
+- **Business name**: extracted from the current Maps page
+- **Date and time**: generated at export time from `new Date().toISOString()`
+- **Overall score**: the 0–100 audit score computed during analysis
+
+### Sections
+
+Reports include the following sections in order:
+
+1. **Executive Summary** — overall score, top 3 opportunities, and a one-line status
+2. **Business Information** — name, address, phone, website, Maps URL, and place URL
+3. **Categories** — primary category, additional categories, and relevance notes
+4. **Services** — detected or manually entered services with descriptions and pricing if available
+5. **Reviews** — total count, average rating, rating distribution, and recent-review highlights
+6. **Website** — snapshot of title, meta description, H1, detected business name, phone, address, and schema presence
+7. **NAP** — comparison of Maps name/address/phone against the website snapshot with match status
+8. **Competitors** — top competitors from the current search with rank, rating, reviews, and category
+9. **Opportunities** — prioritized list of issues with explanations and suggested actions
+
+## Print and PDF
+
+PDF generation uses the browser’s native print pipeline:
+
+1. The extension builds a clean, print-friendly HTML document in a hidden iframe or popup window.
+2. It applies a `@media print` stylesheet that hides UI chrome and forces single-column layout.
+3. The user clicks **Print** in the report panel, then selects **Save as PDF** in the system print dialog.
+
+This approach requires no external libraries and works offline. The print stylesheet sets:
+
+```css
+@media print {
+  .no-print { display: none; }
+  body { font-size: 12pt; color: #000; background: #fff; }
+  a[href]::after { content: " (" attr(href) ")"; }
+}
+```
+
+## CSV export
+
+CSV files include one row per audited business or competitor. Columns are fixed and documented so imports into spreadsheets or CRMs are reliable.
+
+### Columns
+
+| Column | Description | Example |
+| --- | --- | --- |
+| `Business` | Business name | "Acme Roofing" |
+| `Category` | Primary category | "Roofing contractor" |
+| `Rating` | Average star rating | "4.7" |
+| `Reviews` | Total review count | "128" |
+| `Website` | Website URL or "Not detected" | "[https://acme.example.com](https://acme.example.com)" |
+| `Phone` | Phone number or "Not detected" | "+1-555-0199" |
+| `Address` | Full address or "Not detected" | "123 Main St, Austin, TX" |
+| `Audit Score` | Computed 0–100 score | "72" |
+
+### Proposed generator shape
+
+```typescript
+// src/services/exportCsv.ts (proposed/spec)
+function generateCsv(rows: CsvRow[]): string {
+  const headers = ['Business', 'Category', 'Rating', 'Reviews', 'Website', 'Phone', 'Address', 'Audit Score'];
+  const lines = [headers.join(',')];
+  for (const row of rows) {
+    const cells = headers.map((h) => escapeCsv(row[h as keyof CsvRow]));
+    lines.push(cells.join(','));
+  }
+  return lines.join('\n');
+}
+
+function escapeCsv(value: string): string {
+  const s = String(value ?? 'N/A');
+  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+```
+
+## JSON export
+
+JSON export preserves the full structured audit so you can archive results, diff audits over time, or feed them into other tools.
+
+### Proposed JSON shape
+
+```json
+{
+  "metadata": {
+    "version": "1.0.0",
+    "generatedAt": "2025-01-15T09:22:00.000Z",
+    "sourceUrl": "https://www.google.com/maps/place/..."
+  },
+  "business": {
+    "name": "Acme Roofing",
+    "primaryCategory": "Roofing contractor",
+    "additionalCategories": ["Gutter cleaning service"],
+    "address": "123 Main St, Austin, TX 78701",
+    "phone": "+1-555-0199",
+    "website": "https://acme.example.com",
+    "rating": 4.7,
+    "reviewCount": 128,
+    "hours": { "monday": "08:00–17:00" },
+    "services": ["Roof repair", "Roof replacement"],
+    "attributes": ["Identifies as women-owned"],
+    "description": "Family-owned roofing since 1998..."
+  },
+  "audit": {
+    "score": 72,
+    "breakdown": {
+      "businessInformation": 12,
+      "primaryCategory": 15,
+      "additionalCategories": 8,
+      "services": 7,
+      "reviews": 10,
+      "website": 8,
+      "hours": 4,
+      "photos": 3,
+      "attributes": 3,
+      "description": 2
+    }
+  },
+  "issues": [
+    {
+      "field": "services",
+      "status": "WARNING",
+      "message": "Only 2 services detected."
+    }
+  ],
+  "opportunities": [
+    {
+      "issue": "Missing website link",
+      "whyItMatters": "Websites are a strong local ranking signal.",
+      "suggestedAction": "Add a verified website URL to your GBP."
+    }
+  ],
+  "competitors": [
+    {
+      "rank": 1,
+      "name": "Top Roofers LLC",
+      "category": "Roofing contractor",
+      "rating": 4.9,
+      "reviewCount": 312,
+      "website": "https://toproofers.example.com"
+    }
+  ],
+  "nap": {
+    "nameMatch": "MATCH",
+    "addressMatch": "MATCH",
+    "phoneMatch": "POSSIBLE_MISMATCH"
+  },
+  "websiteSnapshot": {
+    "title": "Acme Roofing | Austin TX",
+    "metaDescription": "Roof repair and replacement in Austin.",
+    "h1": "Welcome to Acme Roofing",
+    "detectedBusinessName": "Acme Roofing",
+    "schemaTypes": ["LocalBusiness"]
+  }
+}
+```
+
+## Copy report
+
+The **Copy Report** button serializes the Executive Summary and top five opportunities as plain text and writes them to the clipboard using `navigator.clipboard.writeText`. This is useful for pasting into emails, Slack, or CRM notes.
+
+## Export UI
+
+The `ExportButton` component provides a dropdown with the following actions:
+
+- **Print / Save as PDF**
+- **Export CSV**
+- **Export JSON**
+- **Copy Report**
+
+Each action triggers the corresponding generator, then creates a temporary anchor element with `download` or opens the print dialog. No data leaves the browser.
+
+```tsx
+// src/components/ExportButton.tsx (proposed/spec)
+<Dropdown>
+  <DropdownItem onClick={() => window.print()}>Print / Save as PDF</DropdownItem>
+  <DropdownItem onClick={() => downloadCsv(rows)}>Export CSV</DropdownItem>
+  <DropdownItem onClick={() => downloadJson(audit)}>Export JSON</DropdownItem>
+  <DropdownItem onClick={() => copyTextSummary(audit)}>Copy Report</DropdownItem>
+</Dropdown>
+```
+
+## Next steps
+
+- Review how audit history and favorites are stored and managed locally on the [History and Settings](/product/history-settings) page.
+- Review the scoring breakdown on the [Audit Scoring](/product/audit-scoring) page.

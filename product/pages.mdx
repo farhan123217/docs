@@ -1,0 +1,261 @@
+---
+title: "Pages and Dashboard: All 19 Surfaces and Navigation"
+description: "Complete specification of all 19 GBP Auditor pages, the primary navigation, and the dashboard layout with quick actions and stats."
+sidebarTitle: "Pages"
+---
+
+GBP Auditor exposes 19 distinct pages (or views) across popup, side panel, and full-screen surfaces. Each page is focused on a single task or dataset. The primary navigation bar provides fast access to the most-used surfaces, while the Dashboard serves as the home screen when no specific audit is running.
+
+## All 19 pages
+
+| # | Page | Surface | Purpose |
+| --- | --- | --- | --- |
+| 1 | **Dashboard** | Side panel / Popup | Home screen with welcome, quick actions, recent audits, saved businesses, and quick stats |
+| 2 | **Current Business** | Side panel | Live view of the detected business with extracted fields and quick status |
+| 3 | **GBP Audit** | Side panel / Full | Full 100-point audit with sections, checks, scores, and explanations |
+| 4 | **Search Audit** | Side panel | Market-level analysis of a Google Maps search results page |
+| 5 | **Competitors** | Side panel | Table of competitors extracted from Maps with rank, rating, reviews, and actions |
+| 6 | **Competitor Comparison** | Side panel / Full | Side-by-side comparison of the current business against one competitor |
+| 7 | **Categories** | Side panel | Primary and additional category analysis, competitor category differences, and opportunities |
+| 8 | **Services** | Side panel | Observable services list with add/edit/delete/copy/export and a Service Editor modal |
+| 9 | **Reviews** | Side panel | Review totals, averages, rating distribution, and recent review summary |
+| 10 | **Review Keywords** | Side panel | Locally extracted keywords and phrases from reviews with frequency counts |
+| 11 | **Website Audit** | Side panel | Title, meta, H1, schema, and NAP presence from a user-approved website fetch |
+| 12 | **NAP Audit** | Side panel | Name/Address/Phone comparison between Maps data and the fetched website |
+| 13 | **Opportunities** | Side panel | Consolidated list of all issues with "Why it matters" and "Suggested action" |
+| 14 | **History** | Popup / Full | Past audits with business name, date, score, rating, and reviews; view, compare, delete, export |
+| 15 | **Favorites** | Popup / Full | Saved businesses with name, Maps URL, date added, and last score; open, audit, remove |
+| 16 | **Export Report** | Modal / Full | Report header, all sections, and export options: Print, PDF, CSV, JSON, Copy |
+| 17 | **Settings** | Popup / Full | Theme, auto-open panel, floating button, data storage, export settings, reset, about |
+| 18 | **Privacy** | Full | Data handling, no account, local processing, no selling data, user deletion |
+| 19 | **About** | Popup / Full | Version, branding, credits, and link to privacy page |
+
+## Primary navigation
+
+The primary navigation bar is visible on the side panel and full-screen pages. It provides one-click access to the ten most-used surfaces.
+
+```text
++---------------------------------------------------+
+|  [Logo]  Dashboard | Current Business | Search    |
+|  Audit | Competitors | Categories | Services       |
+|  Reviews | Website | History | Settings           |
++---------------------------------------------------+
+```
+
+### Navigation items
+
+| Label | Target page | When hidden |
+| --- | --- | --- |
+| Dashboard | Dashboard | Never |
+| Current Business | Current Business | When no business is detected |
+| Search Audit | Search Audit | When not on a search results page |
+| Competitors | Competitors | When no competitors are extracted |
+| Categories | Categories | When no category data exists |
+| Services | Services | When no services data exists |
+| Reviews | Reviews | When no review data exists |
+| Website | Website Audit | When no website URL is detected |
+| History | History | Never |
+| Settings | Settings | Never |
+
+Items are disabled (not hidden) when their preconditions are not met, with a tooltip explaining why. For example, "Website" is disabled with the tooltip "No website URL detected for this business."
+
+## Dashboard specification
+
+The Dashboard is the default view when the side panel opens and no specific audit tab is selected. It is designed to get the user to value in one click.
+
+### Layout
+
+```text
++---------------------------------------------------+
+|  Welcome to GBP Auditor                           |
+|  Analyze your Google Business Profile in seconds  |
++---------------------------------------------------+
+|  [Audit Current Business]  [Analyze Maps Search]  |  quick actions
+|  [Research Competitors]                           |
++---------------------------------------------------+
+|  Recent Audits                                    |  section
+|  ┌─────────────┐ ┌─────────────┐                 |
+|  │ Joe's Plum. │ │ Main St Den.│                 |
+|  │ 78/100      │ │ 64/100      │                 |
+|  │ 2 min ago   │ │ 1 hr ago    │                 |
+|  └─────────────┘ └─────────────┘                 |
++---------------------------------------------------+
+|  Saved Businesses                                 |  section
+|  ┌─────────────┐ ┌─────────────┐                 |
+|  │ Joe's Plum. │ │ Main St Den.│                 |
+|  │ ★ 4.7       │ │ ★ 4.2       │                 |
+|  └─────────────┘ └─────────────┘                 |
++---------------------------------------------------+
+|  Average Audit Score: 71/100                      |  quick stats
+|  Total Audits: 12                                 |
+|  Businesses Saved: 5                              |
++---------------------------------------------------+
+```
+
+### Dashboard sections
+
+**Welcome banner.** A short headline and subheadline. The headline is pulled from the branding config so it is swappable.
+
+**Quick actions.** Three primary buttons:
+
+- **Audit Current Business:** navigates to GBP Audit, or shows "No business detected" if unsupported
+- **Analyze Maps Search:** navigates to Search Audit, or shows "No search results detected"
+- **Research Competitors:** navigates to Competitors, or runs competitor extraction if not yet cached
+
+**Recent Audits.** A horizontally scrollable row of cards showing the last 4 audited businesses. Each card shows business name, overall score, and time since audit. Clicking a card opens that audit in the GBP Audit view.
+
+**Saved Businesses.** A horizontally scrollable row of cards showing favorited businesses. Each card shows name, rating, and last known score. Clicking a card opens the Current Business view for that profile.
+
+**Quick Stats.** Three metrics:
+
+- Average Audit Score across all history
+- Total Audits count
+- Businesses Saved count
+
+### Empty states
+
+When a section has no data, it renders an `EmptyState` component instead of hiding:
+
+| Section | Empty state message |
+| --- | --- |
+| Recent Audits | "No audits yet. Run your first audit to see it here." |
+| Saved Businesses | "No saved businesses yet. Favorite a business to track it." |
+
+## Page routing rules
+
+- **Popup:** always renders the Dashboard as its root. User actions may open deeper views within the popup's 400px width, or launch the side panel for richer surfaces.
+- **Side panel:** supports full navigation stack. Tabs within a view (Overview, Audit, Categories, etc.) are in-page switches, not route changes.
+- **Full-screen pages:** History, Favorites, Settings, Privacy, and About may open in a dedicated tab if the user chooses "Open in new tab" from the popup menu.
+- **Back navigation:** every page (except Dashboard) shows a back button that returns to the previous view in the stack. The stack is limited to 10 entries to prevent memory growth.
+
+## Responsive considerations
+
+The side panel width is fixed between 320px and 450px, so pages are designed for that narrow viewport. Tables always scroll horizontally. Cards stack vertically. Modals are constrained to the panel width. Full-screen pages (opened in tabs) use the same components but expand to standard browser width.
+
+GBP Auditor exposes 19 distinct pages (or views) across popup, side panel, and full-screen surfaces. Each page is focused on a single task or dataset. The primary navigation bar provides fast access to the most-used surfaces, while the Dashboard serves as the home screen when no specific audit is running.
+
+## All 19 pages
+
+| # | Page | Surface | Purpose |
+| --- | --- | --- | --- |
+| 1 | **Dashboard** | Side panel / Popup | Home screen with welcome, quick actions, recent audits, saved businesses, and quick stats |
+| 2 | **Current Business** | Side panel | Live view of the detected business with extracted fields and quick status |
+| 3 | **GBP Audit** | Side panel / Full | Full 100-point audit with sections, checks, scores, and explanations |
+| 4 | **Search Audit** | Side panel | Market-level analysis of a Google Maps search results page |
+| 5 | **Competitors** | Side panel | Table of competitors extracted from Maps with rank, rating, reviews, and actions |
+| 6 | **Competitor Comparison** | Side panel / Full | Side-by-side comparison of the current business against one competitor |
+| 7 | **Categories** | Side panel | Primary and additional category analysis, competitor category differences, and opportunities |
+| 8 | **Services** | Side panel | Observable services list with add/edit/delete/copy/export and a Service Editor modal |
+| 9 | **Reviews** | Side panel | Review totals, averages, rating distribution, and recent review summary |
+| 10 | **Review Keywords** | Side panel | Locally extracted keywords and phrases from reviews with frequency counts |
+| 11 | **Website Audit** | Side panel | Title, meta, H1, schema, and NAP presence from a user-approved website fetch |
+| 12 | **NAP Audit** | Side panel | Name/Address/Phone comparison between Maps data and the fetched website |
+| 13 | **Opportunities** | Side panel | Consolidated list of all issues with "Why it matters" and "Suggested action" |
+| 14 | **History** | Popup / Full | Past audits with business name, date, score, rating, and reviews; view, compare, delete, export |
+| 15 | **Favorites** | Popup / Full | Saved businesses with name, Maps URL, date added, and last score; open, audit, remove |
+| 16 | **Export Report** | Modal / Full | Report header, all sections, and export options: Print, PDF, CSV, JSON, Copy |
+| 17 | **Settings** | Popup / Full | Theme, auto-open panel, floating button, data storage, export settings, reset, about |
+| 18 | **Privacy** | Full | Data handling, no account, local processing, no selling data, user deletion |
+| 19 | **About** | Popup / Full | Version, branding, credits, and link to privacy page |
+
+## Primary navigation
+
+The primary navigation bar is visible on the side panel and full-screen pages. It provides one-click access to the ten most-used surfaces.
+
+```text
++---------------------------------------------------+
+|  [Logo]  Dashboard | Current Business | Search    |
+|  Audit | Competitors | Categories | Services       |
+|  Reviews | Website | History | Settings           |
++---------------------------------------------------+
+```
+
+### Navigation items
+
+| Label | Target page | When hidden |
+| --- | --- | --- |
+| Dashboard | Dashboard | Never |
+| Current Business | Current Business | When no business is detected |
+| Search Audit | Search Audit | When not on a search results page |
+| Competitors | Competitors | When no competitors are extracted |
+| Categories | Categories | When no category data exists |
+| Services | Services | When no services data exists |
+| Reviews | Reviews | When no review data exists |
+| Website | Website Audit | When no website URL is detected |
+| History | History | Never |
+| Settings | Settings | Never |
+
+Items are disabled (not hidden) when their preconditions are not met, with a tooltip explaining why. For example, "Website" is disabled with the tooltip "No website URL detected for this business."
+
+## Dashboard specification
+
+The Dashboard is the default view when the side panel opens and no specific audit tab is selected. It is designed to get the user to value in one click.
+
+### Layout
+
+```text
++---------------------------------------------------+
+|  Welcome to GBP Auditor                           |
+|  Analyze your Google Business Profile in seconds  |
++---------------------------------------------------+
+|  [Audit Current Business]  [Analyze Maps Search]  |  quick actions
+|  [Research Competitors]                           |
++---------------------------------------------------+
+|  Recent Audits                                    |  section
+|  ┌─────────────┐ ┌─────────────┐                 |
+|  │ Joe's Plum. │ │ Main St Den.│                 |
+|  │ 78/100      │ │ 64/100      │                 |
+|  │ 2 min ago   │ │ 1 hr ago    │                 |
+|  └─────────────┘ └─────────────┘                 |
++---------------------------------------------------+
+|  Saved Businesses                                 |  section
+|  ┌─────────────┐ ┌─────────────┐                 |
+|  │ Joe's Plum. │ │ Main St Den.│                 |
+|  │ ★ 4.7       │ │ ★ 4.2       │                 |
+|  └─────────────┘ └─────────────┘                 |
++---------------------------------------------------+
+|  Average Audit Score: 71/100                      |  quick stats
+|  Total Audits: 12                                 |
+|  Businesses Saved: 5                              |
++---------------------------------------------------+
+```
+
+### Dashboard sections
+
+**Welcome banner.** A short headline and subheadline. The headline is pulled from the branding config so it is swappable.
+
+**Quick actions.** Three primary buttons:
+
+- **Audit Current Business:** navigates to GBP Audit, or shows "No business detected" if unsupported
+- **Analyze Maps Search:** navigates to Search Audit, or shows "No search results detected"
+- **Research Competitors:** navigates to Competitors, or runs competitor extraction if not yet cached
+
+**Recent Audits.** A horizontally scrollable row of cards showing the last 4 audited businesses. Each card shows business name, overall score, and time since audit. Clicking a card opens that audit in the GBP Audit view.
+
+**Saved Businesses.** A horizontally scrollable row of cards showing favorited businesses. Each card shows name, rating, and last known score. Clicking a card opens the Current Business view for that profile.
+
+**Quick Stats.** Three metrics:
+
+- Average Audit Score across all history
+- Total Audits count
+- Businesses Saved count
+
+### Empty states
+
+When a section has no data, it renders an `EmptyState` component instead of hiding:
+
+| Section | Empty state message |
+| --- | --- |
+| Recent Audits | "No audits yet. Run your first audit to see it here." |
+| Saved Businesses | "No saved businesses yet. Favorite a business to track it." |
+
+## Page routing rules
+
+- **Popup:** always renders the Dashboard as its root. User actions may open deeper views within the popup's 400px width, or launch the side panel for richer surfaces.
+- **Side panel:** supports full navigation stack. Tabs within a view (Overview, Audit, Categories, etc.) are in-page switches, not route changes.
+- **Full-screen pages:** History, Favorites, Settings, Privacy, and About may open in a dedicated tab if the user chooses "Open in new tab" from the popup menu.
+- **Back navigation:** every page (except Dashboard) shows a back button that returns to the previous view in the stack. The stack is limited to 10 entries to prevent memory growth.
+
+## Responsive considerations
+
+The side panel width is fixed between 320px and 450px, so pages are designed for that narrow viewport. Tables always scroll horizontally. Cards stack vertically. Modals are constrained to the panel width. Full-screen pages (opened in tabs) use the same components but expand to standard browser width.

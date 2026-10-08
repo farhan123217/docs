@@ -1,0 +1,195 @@
+---
+title: "Architecture Overview"
+sidebarTitle: "Overview"
+description: "High-level architecture and component layout for the GBP Auditor Chrome Extension, including folder structure, message flow, and branding configurability."
+---
+
+The GBP Auditor extension is built around three core runtime surfaces that share data through a lightweight communication layer: the **content script** (runs in Google Maps tabs), the **background service worker** (orchestrates cross-tab state), and the **popup / side panel** (presents the UI). A central parser module extracts visible business data from the DOM, and a chrome.storage + IndexedDB layer keeps everything local with no backend dependency.
+
+The project structure is designed to be modular so the Maps parser, UI components, storage logic, and audit engine can evolve independently. A single branding config object at `src/utils/branding.ts` contains the display name, logo asset paths, and theme tokens so the working name (GBP Auditor) can be swapped without touching multiple files.
+
+### Folder Structure
+
+```text
+/
+├── manifest.json                 # Proposed Manifest V3 declaration
+├── vite.config.ts               # Build config for popup, content, background bundles
+├── tsconfig.json                # strict TypeScript
+├── src/
+│   ├── background/
+│   │   └── index.ts             # Service worker: tab updates, message relay, icon badge
+│   ├── content/
+│   │   ├── index.ts             # Content script bootstrap
+│   │   ├── observer.ts          # DOM MutationObserver, debounced scan dispatch
+│   │   ├── parser.ts            # GoogleMapsParser class (page detection + extraction)
+│   │   ├── extractor/           # Sub-extractors for each field
+│   │   │   ├── businessName.ts
+│   │   │   ├── category.ts
+│   │   │   ├── rating.ts
+│   │   │   ├── reviewCount.ts
+│   │   │   ├── address.ts
+│   │   │   ├── phone.ts
+│   │   │   ├── website.ts
+│   │   │   ├── hours.ts
+│   │   │   ├── services.ts
+│   │   │   ├── attributes.ts
+│   │   │   ├── description.ts
+│   │   │   └── searchResults.ts
+│   │   └── ui/
+│   │       ├── floatingButton.ts    # Injects the [GBP] floating button
+│   │       └── sidePanel.ts         # Opens / closes the inline Maps side panel
+│   ├── popup/
+│   │   ├── index.tsx            # Popup entry point (React)
+│   │   ├── App.tsx              # Popup router: Dashboard, Audit, Settings
+│   │   └── index.html           # Popup markup
+│   ├── pages/
+│   │   ├── Dashboard.tsx        # Quick actions + recent audits + saved businesses
+│   │   ├── CurrentBusiness.tsx  # Parsed profile view
+│   │   ├── Audit.tsx            # Full audit checklist + scoring
+│   │   ├── SearchAudit.tsx      # Maps search result analysis
+│   │   ├── Competitors.tsx      # Competitor table from visible results
+│   │   ├── CompetitorComparison.tsx
+│   │   ├── Categories.tsx
+│   │   ├── CategoryResearch.tsx
+│   │   ├── Services.tsx         # Service list + editor modal
+│   │   ├── Reviews.tsx
+│   │   ├── ReviewKeywords.tsx   # Phrase frequency
+│   │   ├── WebsiteAudit.tsx
+│   │   ├── NAPAudit.tsx
+│   │   ├── Opportunities.tsx
+│   │   ├── History.tsx
+│   │   ├── Favorites.tsx
+│   │   ├── ExportReport.tsx
+│   │   ├── Settings.tsx
+│   │   ├── Privacy.tsx
+│   │   └── About.tsx
+│   ├── services/
+│   │   ├── auditEngine.ts       # Scoring logic (max 100)
+│   │   ├── reportGenerator.ts   # CSV/JSON/print report assembly
+│   │   └── competitorAnalyzer.ts
+│   ├── storage/
+│   │   ├── chromeStorage.ts     # chrome.storage.local wrappers
+│   │   ├── indexedDb.ts         # IndexedDB schema + CRUD
+│   │   └── cache.ts             # Parsed result cache with TTL
+│   ├── types/
+│   │   ├── business.ts          # BusinessProfile, Review, Service, Category
+│   │   ├── audit.ts             # AuditResult, AuditIssue
+│   │   ├── website.ts           # WebsiteSnapshot, NAPResult
+│   │   └── search.ts            # SearchResult, Competitor
+│   ├── components/
+│   │   ├── AppShell.tsx         # Common layout shell with nav + topbar
+│   │   ├── Sidebar.tsx          # Primary nav links
+│   │   ├── Topbar.tsx           # Business name + score badge
+│   │   ├── BusinessHeader.tsx
+│   │   ├── ScoreCard.tsx
+│   │   ├── AuditCard.tsx
+│   │   ├── MetricCard.tsx
+│   │   ├── IssueCard.tsx
+│   │   ├── OpportunityCard.tsx
+│   │   ├── DataTable.tsx
+│   │   ├── CategoryBadge.tsx
+│   │   ├── RatingBadge.tsx
+│   │   ├── StatusBadge.tsx
+│   │   ├── SearchBar.tsx
+│   │   ├── FilterBar.tsx
+│   │   ├── Tabs.tsx
+│   │   ├── Modal.tsx
+│   │   ├── Drawer.tsx
+│   │   ├── Tooltip.tsx
+│   │   ├── EmptyState.tsx
+│   │   ├── LoadingSkeleton.tsx
+│   │   ├── ExportButton.tsx
+│   │   ├── Pagination.tsx
+│   │   └── ConfirmDialog.tsx
+│   ├── hooks/
+│   │   ├── useStorage.ts        # Read/write chrome.storage
+│   │   ├── useParser.ts         # Trigger parser from popup/side panel
+│   │   ├── useAudit.ts          # Run audit engine
+│   │   └── useTheme.ts          # Light / dark / system
+│   ├── utils/
+│   │   ├── branding.ts          # Swappable name, logo, colors
+│   │   ├── dom.ts               # Safe selectors, sanitization helpers
+│   │   ├── validators.ts        # Field validation helpers
+│   │   └── csv.ts               # CSV serialization utilities
+│   └── icons/
+│       └── logo.svg             # Replaceable via branding config
+```
+
+### Component Responsibilities
+
+| Component | Runtime Context | What It Does |
+| --- | --- | --- |
+| **Background Service Worker** | Event page | Listens for `chrome.tabs.onUpdated` on `*://*.google.com/maps*`. Sends `DETECT_PAGE_TYPE` to content script when a Maps page loads. Caches current parsed state in-memory. Toggles icon badge text (score or `●`). |
+| **Content Script** | Google Maps tab | Observes DOM changes with a debounced MutationObserver. Routes page-type detection to `GoogleMapsParser`. Injects the floating `[GBP]` button and side-panel iframe/host container. Forwards extracted data to background / popup via `chrome.runtime.sendMessage`. |
+| **Popup** | Small standalone window (~400px) | Dashboard when no Maps tab is active; Live audit view when Maps is open. Reads cached parser results from chrome.storage. Can open the side panel or trigger a full export. |
+| **Side Panel** | Inline inside Maps | Full 320–450px panel with tabs, tables, and audit details. Communicates with content script via `chrome.runtime.connect` long-lived port. Closes, collapses, or expands without blocking the map. |
+| **Audit Engine** | Shared module | Computes the 10-category score from a `BusinessProfile`. Returns an array of `AuditIssue` with status and explanation. |
+| **Export Service** | Shared module | Converts audit output to CSV rows, JSON documents, or print-friendly HTML strings for the Report page. |
+
+### Message Flow
+
+When a user opens a Google Maps business profile, the following sequence runs:
+
+1. **Background** detects the tab URL change and sends `DETECT_PAGE_TYPE` to the content script.
+2. **Content Script** runs `GoogleMapsParser.detectPage()` and determines if the page is a business profile, search results, an unsupported Maps page, or a non-Maps page.
+3. If a business profile is detected, the content script spins up sub-extractors to pull visible fields and writes the result to `chrome.storage.local` under key `currentBusiness`.
+4. **Background** reads the storage key, sets the icon badge text to the most recent audit score (or a dot if no score exists).
+5. **Popup** or **Side Panel** reads `currentBusiness` from chrome.storage on mount, runs the audit engine if not already scored, and renders the Dashboard or Audit tab.
+6. User actions such as "Compare Competitors" or "Export CSV" send messages back to the background, which may dispatch further content-script extraction or return cached results.
+
+### Branding Config
+
+All brandable strings, image paths, and primary color tokens live in one object so a rebrand is a single-file change.
+
+```typescript
+// src/utils/branding.ts (proposed)
+export interface BrandConfig {
+  name: string;
+  shortName: string;
+  tagline: string;
+  logo: {
+    popup: string;
+    sidePanel: string;
+    favicon: string;
+  };
+  colors: {
+    primary: string;
+    success: string;
+    warning: string;
+    error: string;
+    info: string;
+    surface: string;
+    background: string;
+  };
+  urls: {
+    privacy: string;
+    support: string;
+  };
+}
+
+export const defaultBrand: BrandConfig = {
+  name: 'GBP Auditor',
+  shortName: 'GBP Auditor',
+  tagline: 'Analyze and improve your Google Business Profile',
+  logo: {
+    popup: '/icons/logo-popup.svg',
+    sidePanel: '/icons/logo-panel.svg',
+    favicon: '/icons/logo-16.png',
+  },
+  colors: {
+    primary: '#2563eb',
+    success: '#16a34a',
+    warning: '#ca8a04',
+    error: '#dc2626',
+    info: '#0891b2',
+    surface: '#ffffff',
+    background: '#f8fafc',
+  },
+  urls: {
+    privacy: '/pages/privacy.html',
+    support: 'mailto:support@gbpauditor.example.com',
+  },
+};
+```
+
+The `BrandingProvider` React context wraps the popup and side-panel roots and allows deep UI components like `AppShell` and `Topbar` to read `brand.name` without prop drilling. Logo SVGs are stored in `src/icons/` and referenced by the config paths.

@@ -1,0 +1,244 @@
+---
+title: "Maps Parser and DOM Extraction"
+sidebarTitle: "Maps Parser"
+description: "GoogleMapsParser design, page-type detection, multi-strategy fallback extraction chains, sanitization, and how to update the parser when Google Maps changes."
+---
+
+The parser is the most critical and most fragile part of the extension because it depends on Google Maps DOM markup that Google can change at any time. The proposed design separates page detection, field extraction, and business logic into small, testable units so an update is as localized as possible.
+
+### GoogleMapsParser Design
+
+The top-level `GoogleMapsParser` class lives in `src/content/parser.ts`. It is thin and delegates all extraction work to per-field extractor modules in `src/content/extractor/`. Each extractor returns `string | number | null` (or array types where applicable) and is responsible for trying multiple fallback strategies.
+
+```typescript
+// src/content/parser.ts (proposed)
+import { detectPageType } from './extractor/detectPageType';
+import { getBusinessName } from './extractor/businessName';
+import { getCategory } from './extractor/category';
+// ... and other field imports
+
+export interface ParsedProfile {
+  pageType: 'business_profile' | 'search_results' | 'unsupported' | 'not_maps';
+  data: BusinessProfile | SearchResult | null;
+}
+
+class GoogleMapsParser {
+  private document: Document;
+
+  constructor(document: Document) {
+    this.document = document;
+  }
+
+  parse(): ParsedProfile {
+    const pageType = detectPageType(this.document);
+
+    switch (pageType) {
+      case 'business_profile':
+        return { pageType, data: this.extractBusinessProfile() };
+      case 'search_results':
+        return { pageType, data: this.extractSearchResults() };
+      default:
+        return { pageType, data: null };
+    }
+  }
+
+  private extractBusinessProfile(): BusinessProfile {
+    return {
+      id: crypto.randomUUID(),
+      name: getBusinessName(this.document),
+      primaryCategory: getCategory(this.document),
+      rating: getRating(this.document),
+      reviewCount: getReviewCount(this.document),
+      address: getAddress(this.document),
+      phone: getPhone(this.document),
+      website: getWebsite(this.document),
+      hours: getHours(this.document),
+      services: getServices(this.document),
+      attributes: getAttributes(this.document),
+      description: getDescription(this.document),
+      photosCount: getPhotosCount(this.document),
+      socialLinks: getSocialLinks(this.document),
+      additionalCategories: getAdditionalCategories(this.document),
+      mapsUrl: window.location.href,
+      placeUrl: getPlaceUrl(this.document),
+      detectedAt: Date.now(),
+    };
+  }
+
+  private extractSearchResults(): SearchResult {
+    return {
+      query: getSearchQuery(this.document),
+      totalDetected: 0,
+      averageRating: null,
+      averageReviews: null,
+      topCategory: null,
+      competitors: getSearchResults(this.document),
+      detectedAt: Date.now(),
+    };
+  }
+}
+
+export const createParser = (doc: Document) => new GoogleMapsParser(doc);
+```
+
+### Page-Type Detection
+
+The `detectPageType` function inspects the URL and visible DOM structure, returning one of four types.
+
+```typescript
+// src/content/extractor/detectPageType.ts (proposed)
+type PageType = 'business_profile' | 'search_results' | 'unsupported' | 'not_maps';
+
+export function detectPageType(doc: Document): PageType {
+  const hostname = doc.location?.hostname ?? '';
+  const pathname = doc.location?.pathname ?? '';
+  const href = doc.location?.href ?? '';
+
+  if (!hostname.includes('google.com')) return 'not_maps';
+
+  const isMaps =
+    pathname.startsWith('/maps') ||
+    hostname.includes('maps.google') ||
+    href.includes('/maps/place/') ||
+    href.includes('/maps/search/');
+
+  if (!isMaps) return 'unsupported';
+
+  const hasBusinessPanel =
+    !!doc.querySelector('[data-result-index]') === false &&
+    !!doc.querySelector('h1');
+
+  const hasSearchList =
+    !!doc.querySelector('[data-result-index]') ||
+    !!doc.querySelector('a[href*="/maps/place/"]');
+
+  if (href.includes('/maps/place/')) return 'business_profile';
+  if (href.includes('/maps/search/')) return 'search_results';
+  if (hasBusinessPanel && !hasSearchList) return 'business_profile';
+  if (hasSearchList) return 'search_results';
+
+  return 'unsupported';
+}
+```
+
+The side panel and floating button are only injected when the detected type is `business_profile` or `search_results`.
+
+### Per-Field Extraction Strategy Chains
+
+Each extractor tries multiple strategies and returns the first non-null result. Strategies are ordered from most specific to most heuristic. If all strategies fail, the extractor returns `null`.
+
+Here is an example for `getBusinessName`:
+
+```typescript
+// src/content/extractor/businessName.ts (proposed)
+export function getBusinessName(doc: Document): string | null {
+  // Strategy 1: h1 inside the side-panel or top card
+  const h1 = doc.querySelector('h1');
+  if (h1) {
+    const text = sanitizeText(h1.textContent);
+    if (text) return text;
+  }
+
+  // Strategy 2: aria-label containing "Business" or explicit panel title role
+  const ariaTitle = doc.querySelector('[aria-label][role="heading"]');
+  if (ariaTitle) {
+    const text = sanitizeText(ariaTitle.textContent);
+    if (text) return text;
+  }
+
+  // Strategy 3: title tag fallback (may contain "Google Maps" suffix)
+  const title = doc.title;
+  if (title && !title.includes('Google Maps')) {
+    return sanitizeText(title);
+  }
+
+  return null;
+}
+```
+
+And an example for `getRating`:
+
+```typescript
+// src/content/extractor/rating.ts (proposed)
+export function getRating(doc: Document): number | null {
+  // Strategy 1: accessible label inside a star-icon wrapper
+  const starLabel = doc.querySelector('[aria-label*="star"]');
+  if (starLabel) {
+    const match = starLabel.getAttribute('aria-label')?.match(/([0-9](?:\\.[0-9])?)/);
+    if (match) return parseFloat(match[1]);
+  }
+
+  // Strategy 2: text node near review count (e.g. "4.5 · 120 reviews")
+  const reviewWrapper = doc.querySelector('[aria-label*="reviews"]');
+  if (reviewWrapper) {
+    const text = reviewWrapper.textContent ?? '';
+    const match = text.match(/([0-9](?:\\.[0-9])?)\s*·/);
+    if (match) return parseFloat(match[1]);
+  }
+
+  // Strategy 3: score tab in the panel header
+  const scoreTab = doc.querySelector('div[role="tab"] [aria-selected="true"]');
+  if (scoreTab) {
+    const text = scoreTab.textContent ?? '';
+    const match = text.match(/([0-9](?:\\.[0-9])?)/);
+    if (match) return parseFloat(match[1]);
+  }
+
+  return null;
+}
+```
+
+### Discovery Strategy for Unknown Elements
+
+When Maps changes, the fastest path to a working extractor is to inspect the page with DevTools, copy `aria-label` text or nearby data attributes, and add a new strategy before the fallback. No single strategy should rely solely on generated class names like `.dIX9bb-something`; always pair a class check with an aria-label, text pattern, or parent structure.
+
+### Text Extraction and Sanitization
+
+All extractor output passes through a shared `sanitizeText` utility to strip extra whitespace, collapse tabs, and trim. It never returns raw HTML.
+
+```typescript
+// src/utils/dom.ts (proposed)
+export function sanitizeText(input: string | null | undefined): string | null {
+  if (!input) return null;
+  const cleaned = input.replace(/\s+/g, ' ').trim();
+  return cleaned.length > 0 ? cleaned : null;
+}
+```
+
+DOM strings are never assigned to `innerHTML` inside the extension UI. All text injection in React components uses JSX interpolation, and content-script UI like the floating button inserts elements imperatively with `textContent` only.
+
+### Updating the Parser When DOM Changes
+
+Google Maps is a dynamic SPA. The content script bootstraps a `MutationObserver` in `src/content/observer.ts` and debounces its callback.
+
+```typescript
+// src/content/observer.ts (proposed)
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function observeChanges(handler: () => void): void {
+  const observer = new MutationObserver(() => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      handler();
+    }, 500);
+  });
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: false, // change to true if aria-state detection becomes necessary
+  });
+}
+```
+
+The `handler` runs `detectPageType` before re-running the full parser. If the page type changed (from search results to a business profile, for example), the side panel updates its content. The content script also caches the last parsed result so重复 scans do not re-run unless the DOM hash changed.
+
+### Expected Failure Messages
+
+When the parser detects a Maps page but individual fields are missing, the UI should show:
+
+- **Unsupported page**: "This page is not supported."
+- **Partial extraction**: "Some information could not be detected."
+- **Specific field**: "N/A" or "Not detected"
+
+These strings are rendered by UI components that receive the null value, not by the parser itself. This separation keeps the parser simple and the copy editable in one React layer.

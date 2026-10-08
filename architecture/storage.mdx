@@ -1,0 +1,248 @@
+---
+title: "Storage and Offline Support"
+sidebarTitle: "Storage"
+description: "How GBP Auditor splits state between chrome.storage.local and IndexedDB, caching strategy, full reset, data export, and offline-first behavior."
+---
+
+The extension stores everything locally. There is no backend server, no cloud sync, and no account system. Data lives in two browser storage APIs depending on its size and structure: **chrome.storage.local** for small config objects and recent session state, and **IndexedDB** for larger collections such as audit history, favorites, and exported reports.
+
+This page defines the schema split between the two APIs, shows proposed wrapper code for consistent reads and writes, and explains how the extension behaves when the user is offline.
+
+### Storage API Split
+
+| Data Type | Primary Storage | Why |
+| --- | --- | --- |
+| `currentBusiness` (last parsed profile) | `chrome.storage.local` | Needed instantly by the popup; small JSON object; must survive service-worker restart. |
+| `settings` | `chrome.storage.local` | Small config object; needed on every mount. |
+| `auditHistory` | IndexedDB | Potentially thousands of records across weeks of use. IndexedDB is faster for range queries (e.g. "audits from last 30 days"). |
+| `favorites` | IndexedDB | Users may save dozens or hundreds of businesses. |
+| `reports` | IndexedDB | Full structured audit results used by the Export page and History comparison view. |
+| `parsedCache` | `chrome.storage.local` | TTL-bounded cache of recently parsed pages so the popup does not re-run extraction on every open. |
+| `competitorResearch` | IndexedDB | Bulk competitor snapshot data from search audits. |
+
+### chrome.storage.local Schema
+
+```typescript
+// src/storage/chromeStorage.ts (proposed)
+const KEYS = {
+  CURRENT_BUSINESS: 'currentBusiness',
+  SETTINGS: 'settings',
+  PARSED_CACHE: 'parsedCache',
+} as const;
+
+export async function getStorageItem<T>(key: string): Promise<T | null> {
+  const result = await chrome.storage.local.get(key);
+  return result[key] ?? null;
+}
+
+export async function setStorageItem<T>(key: string, value: T): Promise<void> {
+  await chrome.storage.local.set({ [key]: value });
+}
+
+export async function removeStorageItem(key: string): Promise<void> {
+  await chrome.storage.local.remove(key);
+}
+```
+
+### IndexedDB Schema
+
+IndexedDB is used through a thin promise wrapper so React hooks can consume it declaratively.
+
+```typescript
+// src/storage/indexedDb.ts (proposed)
+const DB_NAME = 'GbpAuditorDatabase';
+const DB_VERSION = 1;
+
+interface StoreConfig {
+  name: string;
+  keyPath: string;
+  indexes?: { name: string; keyPath: string; unique?: boolean }[];
+}
+
+const STORES: StoreConfig[] = [
+  {
+    name: 'auditHistory',
+    keyPath: 'id',
+    indexes: [
+      { name: 'byDate', keyPath: 'date' },
+      { name: 'byBusinessName', keyPath: 'businessName' },
+    ],
+  },
+  {
+    name: 'favorites',
+    keyPath: 'id',
+    indexes: [{ name: 'byDateAdded', keyPath: 'dateAdded' }],
+  },
+  {
+    name: 'reports',
+    keyPath: 'id',
+    indexes: [{ name: 'byGeneratedAt', keyPath: 'generatedAt' }],
+  },
+  {
+    name: 'competitorResearch',
+    keyPath: 'id',
+    indexes: [{ name: 'byQuery', keyPath: 'query' }],
+  },
+];
+
+function openDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      STORES.forEach((store) => {
+        if (!db.objectStoreNames.contains(store.name)) {
+          const objectStore = db.createObjectStore(store.name, {
+            keyPath: store.keyPath,
+          });
+          store.indexes?.forEach((idx) => {
+            objectStore.createIndex(idx.name, idx.keyPath, {
+              unique: idx.unique ?? false,
+            });
+          });
+        }
+      });
+    };
+  });
+}
+
+export async function saveToStore<T>(storeName: string, data: T): Promise<void> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite');
+    const store = tx.objectStore(storeName);
+    const request = store.put(data);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve();
+  });
+}
+
+export async function getFromStore<T>(
+  storeName: string,
+  id: string
+): Promise<T | null> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readonly');
+    const store = tx.objectStore(storeName);
+    const request = store.get(id);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result ?? null);
+  });
+}
+
+export async function getAllFromStore<T>(storeName: string): Promise<T[]> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readonly');
+    const store = tx.objectStore(storeName);
+    const request = store.getAll();
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result ?? []);
+  });
+}
+
+export async function deleteFromStore(storeName: string, id: string): Promise<void> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite');
+    const store = tx.objectStore(storeName);
+    const request = store.delete(id);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve();
+  });
+}
+```
+
+### Caching Parsed Results
+
+When the content script finishes extraction, the result is written to `currentBusiness` in `chrome.storage.local`. A short-lived cache entry is also written so that if the popup opens within 30 seconds and the DOM has not meaningfully changed, it can skip re-extraction.
+
+```typescript
+// src/storage/cache.ts (proposed)
+const DEFAULT_TTL_MS = 30_000;
+
+interface CacheEntry {
+  value: BusinessProfile | SearchResult;
+  cachedAt: number;
+}
+
+export async function setCache(key: string, value: BusinessProfile | SearchResult, ttl = DEFAULT_TTL_MS): Promise<void> {
+  const cacheEntry: CacheEntry = { value, cachedAt: Date.now() };
+  await chrome.storage.local.set({ [key]: cacheEntry });
+
+  setTimeout(() => {
+    chrome.storage.local.remove(key);
+  }, ttl);
+}
+
+export async function getCache<T extends BusinessProfile | SearchResult>(key: string): Promise<T | null> {
+  const entry = await chrome.storage.local.get(key);
+  if (!entry[key]) return null;
+
+  const { value, cachedAt }: CacheEntry = entry[key];
+  const age = Date.now() - cachedAt;
+
+  if (age > DEFAULT_TTL_MS) {
+    await chrome.storage.local.remove(key);
+    return null;
+  }
+
+  return value as T;
+}
+```
+
+### Reset and Export
+
+The Settings page includes a "Reset all local data" button. Invoking it clears `chrome.storage.local` and deletes every object store from IndexedDB. It does not require a browser restart.
+
+```typescript
+// src/services/dataReset.ts (proposed)
+export async function resetAllData(): Promise<void> {
+  await chrome.storage.local.clear();
+
+  const db = await openDb();
+  STORES.forEach((store) => {
+    if (db.objectStoreNames.contains(store.name)) {
+      const tx = db.transaction(store.name, 'readwrite');
+      tx.objectStore(store.name).clear();
+    }
+  });
+}
+```
+
+The Export page produces two formats:
+
+1. **JSON export**: serializes the full structured audit object including the `BusinessProfile`, `AuditResult`, `Competitor[]`, and `WebsiteSnapshot` using `JSON.stringify`.
+2. **CSV export**: flattens competitor or audit data into rows with deterministic headers. The `ExportButton` component generates a Blob URL and triggers a browser download.
+
+### Offline-First Behavior
+
+All core features are designed to work when the device is offline:
+
+- **History**: fully browsable because it is stored in IndexedDB.
+- **Favorites**: stored in IndexedDB; opening a favorite just opens its saved Maps URL in a new tab.
+- **Reports / Export**: the report page renders from cached audit data without re-extracting from the DOM.
+- **Settings**: always reads from `chrome.storage.local`.
+- **Popup**: when no Maps tab is active, the popup shows the dashboard with recent audits, favorites, and saved businesses from local storage.
+
+Because there is no backend server or API dependency, the extension degrades gracefully by simply showing cached data with a timestamp. If a user tries to run a new audit while offline, the Maps page itself is unavailable; the extension shows a helpful message and lets the user browse existing reports instead.
+
+```typescript
+// Offline check inside audit engine trigger (proposed)
+if (!navigator.onLine) {
+  showToast({
+    message: 'You are offline. Showing your most recent audit.',
+    type: 'info',
+  });
+  return loadLastAuditFromHistory();
+}
+```
+
+### Data Size Budget
+
+`chrome.storage.local` is limited to approximately 5 MB. Only lightweight objects are stored there. IndexedDB is used for all user-generated collections. As a safeguard, a cleanup job in the background service worker runs daily to purge `parsedCache` entries older than 24 hours and audit-history records older than 90 days if they are not favorited.

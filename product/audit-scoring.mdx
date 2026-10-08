@@ -1,0 +1,229 @@
+---
+title: "GBP Auditor: Audit Scoring System"
+description: "Learn how GBP Auditor calculates the 100-point audit score using weighted sections, PASS / WARNING / MISSING / OPPORTUNITY statuses, and per-check rules with clear example messages."
+sidebarTitle: "Audit Scoring"
+---
+
+GBP Auditor computes a total audit score of **100 points** across ten weighted sections. Each section evaluates a specific aspect of a Google Business Profile (GBP) using data extracted from the public-facing Maps page. Every check returns a structured status and an explanation, so you can see exactly what was found, what is missing, and what could be improved. This page specifies the scoring weights, status definitions, and example messages used by each check.
+
+## Score weights
+
+The total score is the sum of ten sections. The following table shows each section, its maximum points, and the types of signals it evaluates.
+
+| Section | Points | Signals evaluated |
+| --- | --- | --- |
+| Business Information | 15 | Name, address, phone, website, Maps URL |
+| Primary Category | 20 | Presence, specificity, intent match, competitor comparison |
+| Additional Categories | 10 | Presence, count, coverage vs competitors |
+| Services | 10 | Presence, count, categories, competitor overlap |
+| Reviews | 15 | Total count, average rating, rating distribution |
+| Website | 10 | Live link, title, meta description, schema, NAP consistency |
+| Hours | 5 | Regular hours, special hours, completeness |
+| Photos | 5 | Presence, profile/cover visibility, approximate count |
+| Attributes | 5 | Visible attributes and features |
+| Description | 5 | Length, business name presence, keyword relevance, stuffing |
+
+## Status definitions
+
+Every individual check returns one of four statuses. Each status maps to a fixed point behavior within its section:
+
+- **PASS**: the signal was detected and meets the expected baseline. Contributes full section credit.
+- **WARNING**: the signal was detected but is weak or below best-practice thresholds. Contributes partial section credit.
+- **MISSING**: the signal was not detected at all. Contributes zero credit.
+- **OPPORTUNITY**: the signal was detected, but the check suggests an actionable improvement. Treated like WARNING for scoring; presented as an optimization idea.
+
+Unavailable fields always show **"N/A"** or **"Not detected"** instead of fabricated values. If the current page is not a supported Maps business page, the extension shows **"This page is not supported."**
+
+## Per-section check rules and example messages
+
+### Business Information (15)
+
+This section validates the core identity fields visible on the Maps business panel.
+
+- **Name**
+  - PASS: business name detected
+  - MISSING: no business name found; message: "Business name not detected."
+- **Address**
+  - PASS: address detected
+  - MISSING: message: "Address not detected."
+- **Phone**
+  - PASS: phone number detected
+  - MISSING: message: "Phone number not detected."
+- **Website**
+  - PASS: website link detected
+  - MISSING: message: "Website not detected."
+- **Maps URL**
+  - PASS: Maps URL available
+  - MISSING: message: "Maps URL not available."
+
+Example output for a partial profile:
+
+```text
+Name        PASS    "Sunny Dental Clinic"
+Address     PASS    "123 Main St, Austin, TX"
+Phone       MISSING "Phone number not detected."
+Website     PASS    "https://sunnydental.com"
+Maps URL    PASS    "https://www.google.com/maps/place/..."
+```
+
+### Primary Category (20)
+
+This section checks the single primary category Google displays for the business.
+
+- **Presence**
+  - PASS: primary category detected
+  - MISSING: message: "No primary category detected."
+- **Specificity**
+  - PASS: category is specific (e.g., "Dental clinic")
+  - WARNING: category is very broad/generic (e.g., "Service establishment"); message: "Primary category appears too generic."
+- **Intent Match**
+  - PASS: category aligns with visible services and business name context
+  - OPPORTUNITY: category may not match core offerings; message: "Primary category may not fully reflect the business services."
+- **Competitor Comparison**
+  - PASS: category matches top competitors
+  - OPPORTUNITY: competitors use a different primary category; message: "Top competitors use a different primary category."
+
+### Additional Categories (10)
+
+This section evaluates secondary categories shown on the profile.
+
+- **Presence**
+  - PASS: one or more additional categories detected
+  - MISSING: message: "No additional categories detected."
+- **Coverage**
+  - WARNING: fewer than three additional categories; message: "Only 2 additional categories detected. Up to 9 are typically supported."
+  - OPPORTUNITY: competitors have additional categories this profile lacks; message: "Competitors list categories not used here."
+
+### Services (10)
+
+This section checks services listed on the profile and compares them with competitor offerings.
+
+- **Presence**
+  - PASS: services detected
+  - MISSING: message: "No services detected."
+- **Count**
+  - WARNING: fewer than five services; message: "Only 4 services detected."
+  - OPPORTUNITY: competitors offer more or different services; message: "Competitors list services not found here."
+
+### Reviews (15)
+
+This section scores review volume, average rating, and rating distribution.
+
+- **Count**
+  - PASS: 10 or more reviews
+  - WARNING: 5 to 9 reviews; message: "Low review volume detected."
+  - MISSING: fewer than 5 reviews; message: "Very low review volume."
+- **Average Rating**
+  - PASS: 4.0 or higher
+  - WARNING: 3.0 to 3.9; message: "Average rating below 4.0."
+  - MISSING: below 3.0; message: "Average rating is low."
+- **Distribution**
+  - OPPORTUNITY: a single star rating dominates; message: "Review distribution suggests an opportunity to improve customer experience."
+
+### Website (10)
+
+This section evaluates the linked website using a user-approved page fetch and basic SEO snapshot checks. See [Website and NAP Audit](/product/website-nap) for the full fetch policy and normalization rules.
+
+- **Link Live**
+  - PASS: website link resolves
+  - MISSING: link broken or absent; message: "Website link not working."
+- **Title**
+  - PASS: `<title>` present and contains business name
+  - WARNING: title missing or generic; message: "Page title missing or generic."
+- **Meta Description**
+  - PASS: meta description present
+  - WARNING: missing; message: "Meta description not detected."
+- **H1**
+  - PASS: H1 present and relevant
+  - WARNING: missing or multiple H1s; message: "H1 structure could be improved."
+- **Schema**
+  - PASS: LocalBusiness or Organization structured data detected
+  - WARNING: no local schema found; message: "LocalBusiness/Organization schema not detected."
+- **NAP Match**
+  - PASS: website NAP matches Maps NAP
+  - WARNING: possible mismatch; message: "Website NAP may differ from Maps."
+
+### Hours (5)
+
+This section validates operating hours and special hours.
+
+- **Regular Hours**
+  - PASS: hours detected for all seven days
+  - WARNING: some days missing; message: "Hours incomplete for some days."
+  - MISSING: no hours detected; message: "No hours detected."
+- **Special Hours**
+  - OPPORTUNITY: special hours not set; message: "Special hours not detected. Setting holiday hours can improve customer trust."
+
+### Photos (5)
+
+This section evaluates photo presence and approximate count.
+
+- **Presence**
+  - PASS: photos section visible
+  - MISSING: no photos detected; message: "No photos detected."
+- **Cover/Profile**
+  - PASS: cover or profile photo visible
+  - WARNING: no clear cover image; message: "No clear cover/profile photo detected."
+- **Count**
+  - OPPORTUNITY: fewer than 10 photos; message: "Photo count appears low. Adding more can improve engagement."
+
+### Attributes (5)
+
+This section checks visible business attributes.
+
+- **Presence**
+  - PASS: attributes detected
+  - MISSING: no attributes; message: "No attributes detected."
+- **Coverage**
+  - OPPORTUNITY: few attributes; message: "Few attributes visible. Adding more can help customers filter results."
+
+### Description (5)
+
+This section analyzes the business description text if visible.
+
+- **Length**
+  - PASS: between 100 and 750 characters
+  - WARNING: too short or very long; message: "Description length is outside the ideal range."
+- **Business Name**
+  - PASS: business name appears in description
+  - MISSING: business name not found; message: "Business name not found in description."
+- **Service Relevance**
+  - PASS: description mentions visible services
+  - OPPORTUNITY: services not mentioned; message: "Description could reference key services."
+- **Location Relevance**
+  - PASS: city or neighborhood mentioned
+  - OPPORTUNITY: no location context; message: "Description could include local area references."
+- **Keyword Stuffing**
+  - PASS: natural language detected
+  - WARNING: repeated keywords suspiciously; message: "Description may contain keyword stuffing."
+
+## Dashboard sections
+
+The audit dashboard presents results in the following sections, each mapping to the scoring table above:
+
+1. **Business Information**
+2. **Category Optimization**
+3. **Services**
+4. **Reviews**
+5. **NAP**
+6. **Website**
+7. **Photos**
+8. **Hours**
+9. **Attributes**
+10. **Local SEO Opportunities**
+
+The dashboard header displays the business name, current overall score, and a Quick Signals checklist. Each section uses a card layout with a status badge, explanation text, and (when applicable) an Opportunities count that links to the full [Opportunities](/product/profile-signals) list.
+
+## Score calculation
+
+The overall score is computed as a weighted sum of section scores. Each section starts with its maximum points and deducts based on the worst status within that section:
+
+- PASS: full points
+- WARNING / OPPORTUNITY: 50% of section points (rounded down)
+- MISSING: 0 points
+
+Example: if the Services section (10 points) contains one WARNING and one PASS, the section score is 5. The final total is clamped between 0 and 100.
+
+## No causation claims
+
+All status messages and opportunity descriptions must use cautious language. Use phrases like **"Potential optimization opportunity"** and **"may improve visibility"**. Never promise higher rankings, claim ranking causation, or guarantee business outcomes.

@@ -1,0 +1,265 @@
+---
+title: "Data Models"
+sidebarTitle: "Data Models"
+description: "TypeScript interfaces for the 12 core data structures used across the audit engine, parser, storage layer, and UI components."
+---
+
+GBP Auditor uses stricter-than-nullable types. Any field that cannot be detected from the visible DOM is returned as `null` rather than an empty string or `undefined`. This convention makes it easy to render "N/A" or "Not detected" consistently across the UI without ambiguous falsy checks.
+
+All models live in `src/types/` and are imported by the parser, audit engine, storage layer, and UI views. The naming conventions and field explanations in this page are proposed as part of the V1 specification.
+
+### BusinessProfile
+
+Represents a single Google Business Profile extracted from a Maps business page.
+
+```typescript
+interface BusinessProfile {
+  id: string;                       // internal uuid generated on detection
+  name: string | null;              // business name from DOM heading or panel title
+  primaryCategory: string | null;   // primary Google category string
+  additionalCategories: string[];   // secondary category chips; empty array if none detected
+  address: string | null;           // full formatted address as shown
+  phone: string | null;             // phone number link text or aria-label
+  website: string | null;           // website URL from the anchor; includes the protocol
+  rating: number | null;            // star rating from 0.0 to 5.0
+  reviewCount: number | null;       // total number of reviews
+  hours: string | null;             // "Open ⋅ Closes 10PM" or similar text
+  services: Service[];              // list of detectable services; see Service below
+  attributes: string[];             // visible attribute chips ("Wi-Fi", "Outdoor seating")
+  description: string | null;       // "About the business" paragraph text
+  photosCount: number | null;       // approximate count from visible text ("124 photos")
+  socialLinks: string[];            // visible social profile URLs (Facebook, Instagram)
+  mapsUrl: string | null;           // current Maps tab URL
+  placeUrl: string | null;          // Google Place URL if visible
+  detectedAt: number;               // timestamp when parsed
+}
+```
+
+### Service
+
+A single service entry. These may come directly from the Maps page (if listed) or be added manually by the user on the Services page.
+
+```typescript
+interface Service {
+  id: string;                       // internal uuid
+  name: string;
+  price: string | null;             // e.g. "$20"
+  description: string | null;
+  category: string | null;          // human-readable grouping
+  source: 'detected' | 'user-added';
+}
+```
+
+### Category
+
+Used for both a business's own categories and for the Category Research feature.
+
+```typescript
+interface Category {
+  id: string;
+  name: string;
+  isPrimary: boolean;
+  competitorUsage: number | null;   // count from visible results, not official data
+  frequency: number | null;         // frequency in current research set
+  relevanceNotes: string | null;    // optional user note
+}
+```
+
+### Review
+
+A single review on a Maps business page.
+
+```typescript
+interface Review {
+  id: string;
+  authorName: string | null;
+  rating: number | null;            // individual reviewer rating (1–5)
+  text: string | null;
+  date: string | null;              // relative or formatted date text
+  keywords: string[];               // extracted keywords/phrases from the review text
+  sentiment: 'positive' | 'neutral' | 'negative' | 'uncertain' | null;
+}
+```
+
+### WebsiteSnapshot
+
+The result of fetching the business website for Website Audit and NAP comparison.
+
+```typescript
+interface WebsiteSnapshot {
+  url: string;
+  fetchStatus: 'success' | 'denied' | 'error';
+  error: string | null;
+  title: string | null;
+  metaDescription: string | null;
+  h1: string | null;
+  bodyText: string | null;           // first 2,000 chars only
+  businessNameFound: boolean;
+  phoneFound: string | null;         // phone found on site if any
+  addressFound: string | null;       // address found on site if any
+  cityFound: string | null;
+  serviceKeywords: string[];         // keywords matching business category
+  contactPageUrl: string | null;
+  hasLocalBusinessSchema: boolean;
+  hasOrganizationSchema: boolean;
+  fetchedAt: number;
+}
+```
+
+### NAPResult
+
+Name / Address / Phone comparison between Maps data and website data.
+
+```typescript
+interface NAPResult {
+  businessName: {
+    maps: string | null;
+    website: string | null;
+    status: 'match' | 'possible_mismatch' | 'unable_to_verify' | 'missing';
+  };
+  address: {
+    maps: string | null;
+    website: string | null;
+    status: 'match' | 'possible_mismatch' | 'unable_to_verify' | 'missing';
+  };
+  phone: {
+    maps: string | null;
+    website: string | null;
+    status: 'match' | 'possible_mismatch' | 'unable_to_verify' | 'missing';
+  };
+  comparedAt: number;
+}
+```
+
+### Competitor
+
+A competitor extracted from a Maps search results page.
+
+```typescript
+interface Competitor {
+  id: string;
+  rank: number | null;              // position in the visible results list
+  name: string | null;
+  primaryCategory: string | null;
+  rating: number | null;
+  reviewCount: number | null;
+  website: string | null;
+  phone: string | null;
+  address: string | null;
+  services: Service[];
+  photosCount: number | null;
+  hours: string | null;
+  attributes: string[];
+  description: string | null;
+  auditScore: number | null;        // computed if the competitor is later audited individually
+  mapsUrl: string | null;
+}
+```
+
+### SearchResult
+
+Represents the set of results on a Maps search results page, plus aggregate stats.
+
+```typescript
+interface SearchResult {
+  query: string | null;             // Maps search text if detectable
+  totalDetected: number;            // number of cards detected on page
+  averageRating: number | null;
+  averageReviews: number | null;
+  topCategory: string | null;
+  competitors: Competitor[];
+  detectedAt: number;
+}
+```
+
+### AuditIssue
+
+One check in the audit checklist. The audit engine returns an array of these.
+
+```typescript
+interface AuditIssue {
+  category:
+    | 'business_information'
+    | 'primary_category'
+    | 'additional_categories'
+    | 'services'
+    | 'reviews'
+    | 'website'
+    | 'hours'
+    | 'photos'
+    | 'attributes'
+    | 'description';
+  weight: number;                   // point contribution out of 100
+  status: 'pass' | 'warning' | 'missing' | 'opportunity';
+  message: string;                  // human-readable explanation
+  suggestion: string | null;        // e.g. "Add more services to reach 5+"
+}
+```
+
+### AuditResult
+
+Complete audit result for a single business.
+
+```typescript
+interface AuditResult {
+  id: string;
+  businessId: string;               // links to BusinessProfile.id
+  overallScore: number;             // 0–100
+  issues: AuditIssue[];
+  opportunities: Opportunity[];
+  generatedAt: number;
+}
+```
+
+### Opportunity
+
+Represents a specific local-SEO improvement recommendation.
+
+```typescript
+interface Opportunity {
+  id: string;
+  issue: string;                    // e.g. "Missing website link"
+  whyItMatters: string;             // e.g. "Websites improve local trust signals"
+  suggestedAction: string;          // e.g. "Add a website link in your GBP"
+  category: string;
+}
+```
+
+### AuditHistory
+
+Record of a past audit for storage and display on the History page.
+
+```typescript
+interface AuditHistory {
+  id: string;
+  businessId: string;
+  businessName: string | null;
+  date: number;
+  score: number;
+  rating: number | null;
+  reviewCount: number | null;
+}
+```
+
+### Settings
+
+User-level configuration stored under the `settings` key in chrome.storage.
+
+```typescript
+interface Settings {
+  theme: 'light' | 'dark' | 'system';
+  autoOpenAuditPanel: boolean;
+  showFloatingButton: boolean;
+  dataStorage: 'local';
+  autoAnalyzeOnPageLoad: boolean;
+  exportFormat: 'csv' | 'json' | 'pdf';
+  grantHistoryPermission: boolean;
+}
+```
+
+### Type Conventions Used
+
+1. **Undetected fields are `null`**: the parser never returns an empty string for a missing field. The UI layer translates `null` to "N/A" or "Not detected."
+2. **Arrays are never `null`**: `services`, `attributes`, `additionalCategories`, and `competitors` always exist as arrays, even when empty.
+3. **Timestamps are `number`**: always `Date.now()` milliseconds stored as a number for deterministic sorting without parsing.
+4. **Internal IDs are `string`**: generated with `crypto.randomUUID()` inside the extension so records are distinguishable even if business names collide.

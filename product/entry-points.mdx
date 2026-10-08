@@ -1,0 +1,137 @@
+---
+title: "Entry Points: Popup, Button, Side Panel, and More"
+description: "All GBP Auditor entry points: popup, floating button, Maps side panel, profile and search page detection, context menu, and toolbar. Includes layout wireframes and interaction rules."
+sidebarTitle: "Entry Points"
+---
+
+GBP Auditor surfaces its interface through multiple entry points so the user can start an audit from wherever they are on Google Maps. Each entry point is lightweight, does not block the underlying page, and respects the user's settings.
+
+## Popup
+
+The popup opens when the user clicks the GBP Auditor icon in the Chrome toolbar. It is the primary discovery surface and works on any tab, not just Google Maps.
+
+### Layout
+
+```text
++----------------------------------+
+|  [Logo]  GBP Auditor             |  header
++----------------------------------+
+|  google.com/maps                 |  current page
+|  ● Google Maps detected          |  status
++----------------------------------+
+|  Name:    Joe's Plumbing         |  current business (if any)
+|  Rating:  4.7 (128 reviews)      |
++----------------------------------+
+|  [Audit Current Business]        |  primary actions
+|  [Analyze Search Results]        |
+|  [Competitor Research]           |
+|  [Category Research]             |
+|  [Review Analysis]               |
++----------------------------------+
+|  [History]  [Settings]  [Export] |  secondary actions
++----------------------------------+
+|  Last audit: 2 min ago · 72/100  |  footer summary
++----------------------------------+
+```
+
+### Specifications
+
+- **Dimensions:** approximately 400px wide; height adapts to content, capped by Chrome's popup limits.
+- **Status indicator:** a colored dot (green for Maps detected, gray for unsupported) next to the current page description.
+- **Current business:** shows the name and key stats only when a business profile is detected. Hidden on unsupported pages.
+- **Buttons:** primary actions are stacked full-width. Secondary actions are in a compact row.
+- **Settings-driven visibility:** the user can disable the popup from auto-opening; it always responds to icon clicks.
+
+## Floating button
+
+A small `[GBP]` button appears on Google Maps pages when a business profile is detected. It floats in the lower-right corner of the page and opens the side panel when clicked.
+
+### Specifications
+
+- **Position:** fixed, lower-right, with safe margin from viewport edges.
+- **Visibility:** only on `google.com/maps` and `maps.google.com` domains when a business profile is detected.
+- **Dismissal:** the user can disable it in Settings. It does not reappear in the same session if dismissed via an X button.
+- **Interaction:** single click opens the side panel. Long-press or right-click is not used to avoid conflict with browser gestures.
+- **Accessibility:** `aria-label="Open GBP Auditor side panel"` and keyboard focusable.
+
+## Maps side panel
+
+The side panel is the richest surface. It appears as an overlay on the right side of the Maps viewport, sharing space with the map rather than blocking it.
+
+### Layout
+
+```text
++---+-------------------------------------+
+| M |  [Business Name]          [X] [<>]  |  header
+| a |  ★ 4.7 (128 reviews)                |  subheader
+| p |  GBP Score: 78/100                  |  score
+|   |  [Full Audit]                       |  CTA
+|   +-------------------------------------+
+|   |  Overview | Audit | Categories      |  tabs
+|   |  Services | Reviews | Competitors   |
+|   +-------------------------------------+
+|   |  Quick Signals                      |  tab content
+|   |  ✓ Business name detected           |
+|   |  ✓ Primary category found           |
+|   |  ⚠ Only 3 services listed           |
+|   |  ✗ Website not detected             |
+|   +-------------------------------------+
+|   |  Opportunities: 4  [View All]       |  footer
+|   |  [Export Report]                    |
++---+-------------------------------------+
+```
+
+### Specifications
+
+- **Width:** 320px to 450px, user-resizable within that range. Default is 380px.
+- **Position:** right-side overlay, `z-index` below Google Maps UI chrome so it does not intercept native controls.
+- **Collapse/expand:** a chevron button collapses the panel to a thin tab (showing only the logo) and expands it back. State persists per session.
+- **Close:** the X button closes the panel entirely. The floating button can reopen it.
+- **Tabs:** Overview, Audit, Categories, Services, Reviews, Competitors. Each tab lazy-loads its content.
+- **Must not block Maps:** the panel is absolutely positioned and does not change the Maps layout or prevent map interaction, scrolling, or clicking pins.
+
+## Profile and search page detection
+
+The content script automatically detects whether the current Maps page is a business profile or a search results page. This detection drives which entry points are shown and which audit flows are available.
+
+### Detection outcomes
+
+| Page type | Triggered entry points | Available actions |
+| --- | --- | --- |
+| Business profile | Popup, floating button, side panel | Audit Current Business, Competitor Research, Review Analysis, Export |
+| Search results | Popup, side panel | Analyze Search Results, Category Research, Export |
+| Unsupported | Popup only | Show unsupported message, open Settings |
+
+### Detection method
+
+The parser inspects the DOM for page-specific signals. For business profiles, it looks for the business name header, rating widget, and category chip. For search results, it looks for the results list container and card pattern. Detection runs once on page load and again on significant URL changes via `MutationObserver`, debounced to prevent continuous scanning.
+
+## Context menu
+
+If appropriate and not redundant with the popup, a context menu item may be added:
+
+- **Label:** "Audit this business with GBP Auditor"
+- **Visible:** only when the user right-clicks a Google Maps business link or card
+- **Action:** opens the side panel and triggers a business audit for the linked business, if the page type supports it
+
+This entry point is optional and should be evaluated for utility after the primary surfaces are stable. It is gated behind a settings toggle.
+
+## Toolbar
+
+A minimal toolbar or badge indicator may appear inside the Chrome toolbar area to show the last audit score or a quick status icon. This is a secondary entry point and is not required for V1.
+
+| Element | Behavior |
+| --- | --- |
+| Badge text | Shows the last audit score (e.g., "78") when on a supported page. Cleared on unsupported pages. |
+| Badge color | Green for 80+, yellow for 50-79, red for below 50. Gray when no audit exists. |
+| Click | Opens the popup. |
+
+## Summary of entry point matrix
+
+| Entry point | Always available | Maps business only | Maps search only | Settings toggle |
+| --- | --- | --- | --- | --- |
+| Popup | Yes | Yes | Yes | No |
+| Floating button | No | Yes | No | Yes (disable) |
+| Side panel | No | Yes | Yes | No |
+| Context menu | No | Yes | No | Yes (enable) |
+| Toolbar badge | Yes | Yes | Yes | No |

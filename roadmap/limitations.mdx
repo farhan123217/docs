@@ -1,0 +1,45 @@
+---
+title: "Known Limitations and Optional Future Features"
+sidebarTitle: "Limitations"
+description: "What GBP Auditor V1 cannot reliably do, why each limit exists, and which optional future features are deferred because they need APIs or extra setup."
+---
+
+GBP Auditor only analyzes data that Google Maps shows in the user's browser, so some limits are permanent. This page lists the known limitations of V1 and the optional features that are deliberately left out until they can be built without paid APIs or misleading results.
+
+## Known limitations
+
+| Limitation | Why it exists | How the extension handles it |
+| --- | --- | --- |
+| Google Maps DOM changes | Google changes markup and class names without notice | The [parser](/architecture/maps-parser) uses fallback strategies per field. If every strategy fails, the field shows "Not detected" and the panel shows "Some information could not be detected." |
+| Partial profile data | Maps does not show every field for every business (services, attributes, description, special hours) | Missing fields render as "N/A" or "Not detected". The audit scores them as MISSING and never fills in guesses. |
+| Additional categories | Maps usually shows only the primary category in the profile header | Additional categories are recorded only when visible. Category research is labeled as observed data, not official Google category data. |
+| Approximate photo counts | Google does not expose a reliable total photo count | Photo signals report presence and an approximate visible volume, never an exact count. |
+| Reviews limited to what is loaded | Only reviews rendered in the page can be read; the extension does not auto-scroll or paginate on the user's behalf beyond what they load | Review analysis states how many reviews were analyzed versus the profile's total review count. |
+| Sentiment is uncertain | Local keyword extraction has no language model | Keywords show frequency. Sentiment is shown only when confidently inferable and otherwise marked as uncertain. |
+| Website analysis constraints | Cross-origin fetches need host permission, and some sites block requests, require JavaScript rendering, or rate limit | Website checks run only after the user grants optional host permission for that site. Failures show "? Unable to verify" in the [NAP audit](/product/website-nap). |
+| Search results are a snapshot | Maps results vary by location, device, personalization, and how far the user scrolled | The [search audit](/product/competitors-search) records results detected at that moment and makes no ranking-causation claims. |
+| No write access to Google | V1 is read-only by design | Services and categories edited in the extension stay local. Nothing is pushed to a Google Business Profile. |
+| Protected content | CAPTCHA, login walls, and private data are out of scope | The extension never bypasses them. If Maps shows a challenge, analysis stops and the page is treated as unsupported. |
+
+<Warning>
+  Scores and opportunities are heuristics based on visible data. They describe potential optimization opportunities and do not predict or guarantee rankings.
+</Warning>
+
+## Optional future features
+
+These features are prepared for in the architecture (service interfaces and data models) but are **not implemented in V1**. Any feature that depends on an external service must be opt-in and use a user-provided API key.
+
+| Feature | Dependency | Notes |
+| --- | --- | --- |
+| AI review summaries | User-provided AI API key | Opt-in only. Local keyword extraction remains the default. |
+| AI description suggestions | User-provided AI API key | Must avoid keyword stuffing and misleading claims. |
+| Keyword clustering | Local algorithm or optional AI key | Could start with local n-gram grouping. |
+| Local rank tracking | Repeated searches over time | Must respect rate limits and run only on user action. |
+| Citation audit | Third-party directory data | Likely needs external sources; marked OPTIONAL. |
+| GBP post analysis | Visible post data on profiles | Feasible only where posts are shown publicly. |
+| Competitor alerts | Scheduled checks | Requires background scheduling and stored baselines. |
+| Scheduled audits | `chrome.alarms` plus an open Maps tab | Cannot run silently against Google; needs user-visible tabs. |
+| White-label reports | Local branding config | Builds on the swappable branding config described in the [architecture overview](/architecture/overview). |
+| Agency mode and client folders | Local storage (IndexedDB) | Groups audits and favorites per client without a backend. |
+
+See the [development phases](/roadmap/phases) for what ships in V1.

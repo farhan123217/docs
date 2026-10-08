@@ -1,0 +1,128 @@
+---
+title: "History, Favorites, Settings, and Offline-First Behavior"
+sidebarTitle: "History and Settings"
+description: "How GBP Auditor stores audit history, favorites, and settings locally using Chrome Storage and IndexedDB. Covers offline behavior, data reset, and privacy implications."
+---
+
+GBP Auditor stores all user data locally in the browser. There is no backend, no login, and no cloud sync. This page describes how history, favorites, and settings are persisted, how the extension behaves offline, and how users can manage or reset their data.
+
+## Audit history
+
+Every completed audit is saved to a history list so you can compare scores over time or re-export older reports. History entries are stored in IndexedDB using the following proposed shape:
+
+```typescript
+// src/types/history.ts (proposed/spec)
+interface AuditHistoryEntry {
+  id: string;                    // crypto.randomUUID()
+  businessName: string;
+  mapsUrl: string;
+  date: string;                  // ISO 8601
+  score: number;                 // 0–100
+  rating: number | null;
+  reviewCount: number | null;
+  auditJson: AuditResult;        // full JSON snapshot for re-export
+}
+```
+
+### History actions
+
+- **View** — open the saved audit in read-only mode inside the side panel
+- **Compare** — select two history entries to diff scores and opportunities
+- **Delete** — remove a single entry or clear all history
+- **Export** — re-export the stored JSON or CSV without re-running the audit
+
+History is scoped to the browser profile. Uninstalling the extension removes the data unless the user exports it first.
+
+## Favorites
+
+Favorites let you pin businesses you audit frequently. A favorite stores minimal metadata and links to the latest history entry for that Maps URL.
+
+```typescript
+// src/types/favorites.ts (proposed/spec)
+interface Favorite {
+  id: string;
+  name: string;
+  mapsUrl: string;
+  dateAdded: string;             // ISO 8601
+  lastScore: number | null;
+}
+```
+
+### Favorites actions
+
+- **Open** — navigate to the Maps URL in a new tab
+- **Audit** — re-run an audit on the current Maps page and update `lastScore`
+- **Remove** — delete the favorite without deleting history
+
+Favorites appear in the Dashboard under **Saved Businesses** for quick access.
+
+## Settings
+
+Settings are stored in `chrome.storage.local` and applied across popup, side panel, and dashboard. The following table lists every setting, its type, default, and behavior.
+
+| Setting | Type | Default | Behavior |
+| --- | --- | --- | --- |
+| Theme | `"light" \| "dark" \| "system"` | `"system"` | Controls Tailwind `dark` class strategy; `"system"` matches `prefers-color-scheme` |
+| Auto-open audit panel | `boolean` | `true` | Automatically opens the side panel when a supported Maps business page is detected |
+| Show floating button | `boolean` | `true` | Renders the `[GBP]` floating button on Maps pages; disable to reduce UI clutter |
+| Data storage | `"local"` | `"local"` | Fixed to local-only; shown for transparency and future-proofing |
+| Export settings | `action` | — | Serializes settings to JSON and downloads them for backup or migration |
+| Reset local data | `action` | — | Clears `chrome.storage.local`, IndexedDB stores, and reloads the extension |
+
+### Settings UI
+
+The Settings page uses a simple form layout with labeled controls. Toggle switches use a shared `Switch` component. Theme selection uses a segmented control. Danger actions (Reset local data) trigger a `ConfirmDialog` to prevent accidental data loss.
+
+```tsx
+// src/pages/Settings.tsx (proposed/spec)
+<form>
+  <ThemeSelector value={settings.theme} onChange={setTheme} />
+  <Switch label="Auto-open audit panel" checked={settings.autoOpen} onChange={setAutoOpen} />
+  <Switch label="Show floating button" checked={settings.showFloating} onChange={setShowFloating} />
+  <Button onClick={exportSettings}>Export Settings</Button>
+  <Button variant="danger" onClick={confirmReset}>Reset Local Data</Button>
+</form>
+```
+
+## Offline-first behavior
+
+All core features work without an internet connection after the initial page load:
+
+- **History** — stored in IndexedDB; fully browsable offline
+- **Favorites** — stored in `chrome.storage.local`; fully browsable offline
+- **Reports** — previously exported reports can be re-printed or re-exported offline
+- **Settings** — always available from local storage
+- **Audits** — new audits require an active Maps page and network to parse live DOM; offline audit creation is not supported
+
+### Storage architecture
+
+- `chrome.storage.local` — small key/value data: settings, favorites, lightweight flags
+- `IndexedDB` — larger structured data: audit history, full JSON snapshots, cached parser results
+
+Both APIs are available in the extension’s background service worker and content scripts via `chrome.storage` and `indexedDB`. Data never leaves the browser except through explicit user-initiated export.
+
+## Reset and deletion
+
+Users can delete their data at any time:
+
+1. **Delete a single history entry** — open History, click Delete on the entry
+2. **Clear all history** — open History, click Clear All, confirm in the dialog
+3. **Reset all local data** — open Settings, click Reset Local Data, confirm in the dialog; this clears storage, IndexedDB, and reloads the extension
+
+There is no recovery path after reset. Users are encouraged to export important audits before clearing data.
+
+## Privacy implications
+
+Because all data is stored locally:
+
+- No account is required.
+- No data is transmitted to a backend or third party.
+- Browsing history is not tracked.
+- Analytics, if added later, would be opt-in only.
+
+For the full privacy statement, see the [Privacy and Security](/engineering/privacy-security) page.
+
+## Next steps
+
+- Review how reports are formatted and exported on the [Reports and Export](/product/reports-export) page.
+- Review the phased development plan on the [Roadmap Phases](/roadmap/phases) page.

@@ -1,0 +1,315 @@
+---
+title: "16-Phase Development Roadmap and Milestones"
+sidebarTitle: "Phases"
+description: "GBP Auditor development roadmap: 16 phases from project setup to performance polish, with deliverables, exit criteria, and emphasis on the first milestone."
+---
+
+GBP Auditor is built in 16 phases. Each phase has a clear deliverable and exit criteria so progress is measurable. The first milestone is the most critical: it validates that the extension can detect a real Google Maps business page and extract visible data accurately.
+
+## Milestone 1: detect and extract
+
+**Goal**: Open a real Google Maps business page in Chrome, click the extension, and see the correct business name, category, rating, and review count in the popup or side panel.
+
+### Phase 1 — Project setup
+
+- Initialize Vite + React + TypeScript (strict) + Tailwind CSS project
+- Configure Manifest V3 with minimum permissions
+- Set up folder structure: `/src/{background,content,popup,components,pages,services,utils,types,hooks,storage,icons}`
+- Add build script `npm run build` and verify unpacked loading in Chrome
+
+**Exit criteria**: `npm run build` succeeds and Chrome loads the extension without manifest errors.
+
+### Phase 2 — Popup, dashboard, and navigation
+
+- Build the popup root layout (~400px)
+- Build the dashboard page with quick-action buttons
+- Implement primary navigation between Dashboard, Current Business, Search Audit, Competitors, Categories, Services, Reviews, Website, History, and Settings
+- Add routing (hash-based or in-memory) for popup and side panel
+
+**Exit criteria**: All nav items render and route correctly in the popup.
+
+### Phase 3 — Design system
+
+- Define Tailwind token extensions for colors, spacing, radius, shadow, and typography
+- Implement dark mode via `dark` class strategy
+- Build base components: `AppShell`, `Sidebar`, `Topbar`, `Button`, `Badge`, `Card`, `Tabs`
+- Add `EmptyState` and `LoadingSkeleton`
+
+**Exit criteria**: All base components render correctly in both light and dark modes.
+
+### Phase 4 — Maps page detection
+
+- Content script injects into `https://www.google.com/maps/*`
+- `detectPage` returns `BUSINESS`, `SEARCH`, or `UNKNOWN` based on URL patterns and DOM markers
+- Background service worker opens popup or side panel when a supported page is detected
+
+**Exit criteria**: Navigating to a Maps business page triggers the side panel or shows the "Google Maps detected" status in the popup.
+
+### Phase 5 — Business parser
+
+- Implement `GoogleMapsParser` with methods: `getBusinessName`, `getCategory`, `getRating`, `getReviewCount`, `getAddress`, `getPhone`, `getWebsite`, `getHours`, `getServices`, `getAttributes`, `getDescription`
+- Each method uses multiple fallback strategies: selectors, aria-labels, data attributes, and text patterns
+- Business logic is decoupled from selectors via a separate `selectors.ts` map
+
+**Exit criteria**: Running the parser on 10 real Maps business pages returns correct data for at least 8 of them.
+
+### Phase 6 — Current business audit
+
+- Compute audit score (0–100) across 10 categories
+- Generate issues with status PASS / WARNING / MISSING / OPPORTUNITY
+- Display the score, breakdown, and issue list in the side panel
+- Show opportunities count and link to the full Opportunities page
+
+**Exit criteria**: Score is stable across reloads for the same business and falls within a reasonable range (not always 0 or 100).
+
+### Phase 7 — Search results audit
+
+- Detect Maps search result pages
+- Extract visible competitor data: rank, name, category, rating, reviews, website, phone
+- Compute average rating, average reviews, and top category for the result set
+- Display the Maps Search Audit panel with a results table
+
+**Exit criteria**: A search for "plumbers in Austin" shows a table of competitors with rank and rating.
+
+### Phase 8 — Competitor analysis
+
+- Competitor table with sortable columns
+- Actions: Open, Audit, Compare
+- Comparison page with rows for Primary Category, Additional Categories, Rating, Reviews, Services, Website, Hours, Attributes, Photos, Description, and Audit Score
+- Highlight Best / Average / Missing per row
+
+**Exit criteria**: Comparing two competitors highlights which fields are stronger or missing.
+
+### Phase 9 — Category analysis
+
+- Category research page: search, list businesses using a category, frequency, competitor usage
+- Sort by Most Used / Least Used / Alphabetical
+- Copy Category and Add to Research List actions
+- Mark data as inferred, not official Google data
+
+**Exit criteria**: Category counts match visible competitor panels for a sampled set of searches.
+
+### Phase 10 — Services management
+
+- Services page: name, price, description, category
+- Add, edit, delete, copy, and export services
+- Service Editor modal with validation (name required, price optional)
+- Recommended services derived from observable competitor info only
+
+**Exit criteria**: CRUD operations persist in local storage and survive reload.
+
+### Phase 11 — Review analysis
+
+- Extract total, average, recent reviews, and rating distribution
+- Review Keywords page: keyword, frequency, sentiment marked uncertain unless clearly inferable
+- No AI API required by default
+
+**Exit criteria**: Review count and average match the visible Maps panel. Keyword extraction runs without errors.
+
+### Phase 12 — Website and NAP audit
+
+- User-approved website fetch with optional runtime host permission
+- Extract title, meta description, H1, business name, phone, address, city, service keywords, contact page, and LocalBusiness schema
+- NAP comparison: Maps vs website name/address/phone with MATCH / POSSIBLE_MISMATCH / UNABLE_TO_VERIFY
+
+**Exit criteria**: Website audit returns PASS or WARNING; NAP comparison does not crash on missing website.
+
+### Phase 13 — History and favorites
+
+- Save each audit to IndexedDB history
+- History table with View, Compare, Delete, Export
+- Favorites list with Open, Audit, Remove
+- Dashboard shows Recent Audits and Saved Businesses
+
+**Exit criteria**: History and favorites persist across extension reloads and browser restarts.
+
+### Phase 14 — Export
+
+- Print / Save as PDF via browser print dialog
+- CSV export with fixed columns
+- JSON export with full structured audit shape
+- Copy Report to clipboard
+
+**Exit criteria**: All four export actions produce valid output that opens correctly in external tools.
+
+### Phase 15 — Settings and privacy
+
+- Settings page: theme, auto-open panel, floating button, export settings, reset local data
+- Privacy page: commitments, what data is stored, how to delete it, honest limits
+- About page: version, branding config link, credits
+
+**Exit criteria**: Settings round-trip through `chrome.storage.local`. Reset clears all data and reloads.
+
+### Phase 16 — Testing and performance
+
+- Parser tests with mocked DOM fixtures
+- Score calculation, CSV export, JSON export, and storage tests
+- Debounced observers, caching, lazy loading, and error boundaries
+- Skeleton loaders and progressive checklist
+- Final manual smoke test on real Maps pages
+
+**Exit criteria**: `npm test` passes. Manual smoke test on 10 real businesses passes without crashes.
+
+## First milestone emphasis
+
+The first milestone is the end of Phase 5. Until this milestone is reached, no later phase should be treated as committed. If the parser cannot reliably extract data from real Maps pages, the product cannot function and later features have no foundation.
+
+## Next steps
+
+- Review known limitations and optional future features on the [Limitations and Future Features](/roadmap/limitations) page.
+- Review the high-level system overview on the [Architecture Overview](/architecture/overview) page.
+
+GBP Auditor is built in 16 phases. Each phase has a clear deliverable and exit criteria so progress is measurable. The first milestone is the most critical: it validates that the extension can detect a real Google Maps business page and extract visible data accurately.
+
+## Milestone 1: detect and extract
+
+**Goal**: Open a real Google Maps business page in Chrome, click the extension, and see the correct business name, category, rating, and review count in the popup or side panel.
+
+### Phase 1 — Project setup
+
+- Initialize Vite + React + TypeScript (strict) + Tailwind CSS project
+- Configure Manifest V3 with minimum permissions
+- Set up folder structure: `/src/{background,content,popup,components,pages,services,utils,types,hooks,storage,icons}`
+- Add build script `npm run build` and verify unpacked loading in Chrome
+
+**Exit criteria**: `npm run build` succeeds and Chrome loads the extension without manifest errors.
+
+### Phase 2 — Popup, dashboard, and navigation
+
+- Build the popup root layout (~400px)
+- Build the dashboard page with quick-action buttons
+- Implement primary navigation between Dashboard, Current Business, Search Audit, Competitors, Categories, Services, Reviews, Website, History, and Settings
+- Add routing (hash-based or in-memory) for popup and side panel
+
+**Exit criteria**: All nav items render and route correctly in the popup.
+
+### Phase 3 — Design system
+
+- Define Tailwind token extensions for colors, spacing, radius, shadow, and typography
+- Implement dark mode via `dark` class strategy
+- Build base components: `AppShell`, `Sidebar`, `Topbar`, `Button`, `Badge`, `Card`, `Tabs`
+- Add `EmptyState` and `LoadingSkeleton`
+
+**Exit criteria**: All base components render correctly in both light and dark modes.
+
+### Phase 4 — Maps page detection
+
+- Content script injects into `https://www.google.com/maps/*`
+- `detectPage` returns `BUSINESS`, `SEARCH`, or `UNKNOWN` based on URL patterns and DOM markers
+- Background service worker opens popup or side panel when a supported page is detected
+
+**Exit criteria**: Navigating to a Maps business page triggers the side panel or shows the "Google Maps detected" status in the popup.
+
+### Phase 5 — Business parser
+
+- Implement `GoogleMapsParser` with methods: `getBusinessName`, `getCategory`, `getRating`, `getReviewCount`, `getAddress`, `getPhone`, `getWebsite`, `getHours`, `getServices`, `getAttributes`, `getDescription`
+- Each method uses multiple fallback strategies: selectors, aria-labels, data attributes, and text patterns
+- Business logic is decoupled from selectors via a separate `selectors.ts` map
+
+**Exit criteria**: Running the parser on 10 real Maps business pages returns correct data for at least 8 of them.
+
+### Phase 6 — Current business audit
+
+- Compute audit score (0–100) across 10 categories
+- Generate issues with status PASS / WARNING / MISSING / OPPORTUNITY
+- Display the score, breakdown, and issue list in the side panel
+- Show opportunities count and link to the full Opportunities page
+
+**Exit criteria**: Score is stable across reloads for the same business and falls within a reasonable range (not always 0 or 100).
+
+### Phase 7 — Search results audit
+
+- Detect Maps search result pages
+- Extract visible competitor data: rank, name, category, rating, reviews, website, phone
+- Compute average rating, average reviews, and top category for the result set
+- Display the Maps Search Audit panel with a results table
+
+**Exit criteria**: A search for "plumbers in Austin" shows a table of competitors with rank and rating.
+
+### Phase 8 — Competitor analysis
+
+- Competitor table with sortable columns
+- Actions: Open, Audit, Compare
+- Comparison page with rows for Primary Category, Additional Categories, Rating, Reviews, Services, Website, Hours, Attributes, Photos, Description, and Audit Score
+- Highlight Best / Average / Missing per row
+
+**Exit criteria**: Comparing two competitors highlights which fields are stronger or missing.
+
+### Phase 9 — Category analysis
+
+- Category research page: search, list businesses using a category, frequency, competitor usage
+- Sort by Most Used / Least Used / Alphabetical
+- Copy Category and Add to Research List actions
+- Mark data as inferred, not official Google data
+
+**Exit criteria**: Category counts match visible competitor panels for a sampled set of searches.
+
+### Phase 10 — Services management
+
+- Services page: name, price, description, category
+- Add, edit, delete, copy, and export services
+- Service Editor modal with validation (name required, price optional)
+- Recommended services derived from observable competitor info only
+
+**Exit criteria**: CRUD operations persist in local storage and survive reload.
+
+### Phase 11 — Review analysis
+
+- Extract total, average, recent reviews, and rating distribution
+- Review Keywords page: keyword, frequency, sentiment marked uncertain unless clearly inferable
+- No AI API required by default
+
+**Exit criteria**: Review count and average match the visible Maps panel. Keyword extraction runs without errors.
+
+### Phase 12 — Website and NAP audit
+
+- User-approved website fetch with optional runtime host permission
+- Extract title, meta description, H1, business name, phone, address, city, service keywords, contact page, and LocalBusiness schema
+- NAP comparison: Maps vs website name/address/phone with MATCH / POSSIBLE_MISMATCH / UNABLE_TO_VERIFY
+
+**Exit criteria**: Website audit returns PASS or WARNING; NAP comparison does not crash on missing website.
+
+### Phase 13 — History and favorites
+
+- Save each audit to IndexedDB history
+- History table with View, Compare, Delete, Export
+- Favorites list with Open, Audit, Remove
+- Dashboard shows Recent Audits and Saved Businesses
+
+**Exit criteria**: History and favorites persist across extension reloads and browser restarts.
+
+### Phase 14 — Export
+
+- Print / Save as PDF via browser print dialog
+- CSV export with fixed columns
+- JSON export with full structured audit shape
+- Copy Report to clipboard
+
+**Exit criteria**: All four export actions produce valid output that opens correctly in external tools.
+
+### Phase 15 — Settings and privacy
+
+- Settings page: theme, auto-open panel, floating button, export settings, reset local data
+- Privacy page: commitments, what data is stored, how to delete it, honest limits
+- About page: version, branding config link, credits
+
+**Exit criteria**: Settings round-trip through `chrome.storage.local`. Reset clears all data and reloads.
+
+### Phase 16 — Testing and performance
+
+- Parser tests with mocked DOM fixtures
+- Score calculation, CSV export, JSON export, and storage tests
+- Debounced observers, caching, lazy loading, and error boundaries
+- Skeleton loaders and progressive checklist
+- Final manual smoke test on real Maps pages
+
+**Exit criteria**: `npm test` passes. Manual smoke test on 10 real businesses passes without crashes.
+
+## First milestone emphasis
+
+The first milestone is the end of Phase 5. Until this milestone is reached, no later phase should be treated as committed. If the parser cannot reliably extract data from real Maps pages, the product cannot function and later features have no foundation.
+
+## Next steps
+
+- Review known limitations and optional future features on the [Limitations and Future Features](/roadmap/limitations) page.
+- Review the high-level system overview on the [Architecture Overview](/architecture/overview) page.

@@ -1,0 +1,349 @@
+---
+title: "Performance Rules, Caching, and Error Handling"
+sidebarTitle: "Performance and Errors"
+description: "Performance best practices for GBP Auditor: debounced DOM observers, result caching, lazy loading, skeleton loaders, error boundaries, and user-facing error messages."
+---
+
+GBP Auditor must stay fast and stable while analyzing dynamic Google Maps pages. This page defines the performance rules, caching strategy, loading states, and error-handling patterns that keep the extension responsive and prevent crashes when Maps updates its DOM.
+
+## DOM observation rules
+
+The content script uses `MutationObserver` to detect when a business panel or search results list has loaded. Observers must be scoped and debounced to avoid scanning the entire page on every micro-change.
+
+### Debounced observer example
+
+```typescript
+// src/content/observer.ts (proposed/spec)
+let debounceTimer: number | null = null;
+
+const observer = new MutationObserver((mutations) => {
+  // Only process mutations inside the known Maps sidebar or result list
+  const isRelevant = mutations.some((m) =>
+    (m.target as Element)?.closest?.('[data-ved]')
+  );
+  if (!isRelevant) return;
+
+  if (debounceTimer) window.clearTimeout(debounceTimer);
+  debounceTimer = window.setTimeout(() => {
+    debounceTimer = null;
+    handleRelevantChange();
+  }, 300);
+});
+
+observer.observe(document.body, { childList: true, subtree: true });
+```
+
+Rules:
+
+- Observe `document.body` with `subtree: true` only when necessary; prefer observing a narrower container once it is detected.
+- Debounce all handler invocations to 150–300 ms.
+- Disconnect the observer after the target panel is fully parsed to avoid continuous scans.
+- Reconnect only when the URL changes or the user opens a new business.
+
+## Caching
+
+Parsed results are cached in memory and IndexedDB so repeated audits of the same business do not trigger full re-parsing.
+
+| Cache layer | Key | TTL | Purpose |
+| --- | --- | --- | --- |
+| In-memory (Map) | Place ID + page type | Session | Instant re-renders when switching tabs |
+| IndexedDB | Place ID + hash of visible text | 5 minutes | Survives popup close and panel collapse |
+
+Cache invalidation happens when:
+
+- The Maps URL changes
+- The user clicks **Refresh** in the UI
+- A manual mutation is detected in the business panel (e.g., the user expands the hours section)
+
+```typescript
+// src/services/cache.ts (proposed/spec)
+const sessionCache = new Map<string, ParsedResult>();
+
+async function getCachedResult(key: string): Promise<ParsedResult | null> {
+  const mem = sessionCache.get(key);
+  if (mem) return mem;
+
+  const db = await openCacheDb();
+  const row = await db.get('results', key);
+  if (row && Date.now() - row.ts < 5 * 60 * 1000) {
+    sessionCache.set(key, row.data);
+    return row.data;
+  }
+  return null;
+}
+```
+
+## Lazy loading
+
+Dashboard and side-panel sections load incrementally. The initial render shows skeleton placeholders, then each section resolves as its parser completes.
+
+```tsx
+// src/components/AuditPanel.tsx (proposed/spec)
+<Suspense fallback={<LoadingSkeleton lines={4} />}>
+  <BusinessSection />
+</Suspense>
+<Suspense fallback={<LoadingSkeleton lines={3} />}>
+  <ReviewsSection />
+</Suspense>
+```
+
+Lazy loading rules:
+
+- Use `React.lazy` for sections that are not visible in the first viewport.
+- Do not lazy-load the business header and score card; they are critical for the first paint.
+- Prefetch the Competitors section only after the primary audit completes.
+
+## Skeleton loader checklist
+
+While an audit runs, the UI displays a progressive checklist with skeleton blocks. This reassures the user that work is happening and sets expectations for each step.
+
+```tsx
+// src/components/AuditProgress.tsx (proposed/spec)
+const STEPS = [
+  'Analyzing Business…',
+  'Business information',
+  'Categories',
+  'Reviews',
+  'Website',
+  'Competitors',
+];
+
+export function AuditProgress({ completed }: { completed: string[] }) {
+  return (
+    <div className="space-y-2">
+      {STEPS.map((step) => (
+        <div key={step} className="flex items-center gap-2">
+          {completed.includes(step) ? (
+            <CheckIcon className="text-success" />
+          ) : (
+            <Spinner className="text-info" />
+          )}
+          <span className={completed.includes(step) ? 'text-text-secondary' : 'text-text-primary'}>
+            {step}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+## Error boundaries
+
+Each major mount point (popup, side panel, dashboard) wraps its React tree in an error boundary so parser crashes or unexpected DOM shapes do not crash the entire extension.
+
+```tsx
+// src/components/ErrorBoundary.tsx (proposed/spec)
+export class ErrorBoundary extends React.Component<
+  { fallback: React.ReactNode },
+  { hasError: boolean }
+> {
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[GBP Auditor] ErrorBoundary caught:', error, info);
+  }
+
+  render() {
+    if (this.state.hasError) return this.props.fallback;
+    return this.props.children;
+  }
+}
+```
+
+The fallback UI shows a compact error card with a **Reload** button that clears the cache and remounts the panel.
+
+## User-facing error messages
+
+When something goes wrong, the extension shows a message instead of crashing or returning blank data.
+
+| Error situation | User-facing message | UI treatment |
+| --- | --- | --- |
+| Unsupported page | "This page is not supported." | `EmptyState` with icon |
+| DOM change breaks parser | "Some information could not be detected." | `StatusBadge` WARNING on affected fields |
+| Field not found | "N/A" or "Not detected" | Gray muted text in table cells |
+| Website fetch blocked (CORS) | "Unable to verify website. Permission or CORS blocked." | `IssueCard` with INFO status |
+| Review text not loaded | "Reviews not fully loaded on this page." | `EmptyState` with refresh hint |
+| Network offline during audit | "Network unavailable. Audit paused. Retry when online." | Toast or inline banner |
+| Storage quota exceeded | "Storage full. Export or clear old audits to continue." | Alert banner with link to History |
+
+All error text is defined in `src/utils/messages.ts` so copy can be updated in one place and reused across components.
+
+## Next steps
+
+- Review how data is stored locally and kept private on the [Privacy and Security](/engineering/privacy-security) page.
+- Review the phased development plan on the [Roadmap Phases](/roadmap/phases) page.
+
+GBP Auditor must stay fast and stable while analyzing dynamic Google Maps pages. This page defines the performance rules, caching strategy, loading states, and error-handling patterns that keep the extension responsive and prevent crashes when Maps updates its DOM.
+
+## DOM observation rules
+
+The content script uses `MutationObserver` to detect when a business panel or search results list has loaded. Observers must be scoped and debounced to avoid scanning the entire page on every micro-change.
+
+### Debounced observer example
+
+```typescript
+// src/content/observer.ts (proposed/spec)
+let debounceTimer: number | null = null;
+
+const observer = new MutationObserver((mutations) => {
+  // Only process mutations inside the known Maps sidebar or result list
+  const isRelevant = mutations.some((m) =>
+    (m.target as Element)?.closest?.('[data-ved]')
+  );
+  if (!isRelevant) return;
+
+  if (debounceTimer) window.clearTimeout(debounceTimer);
+  debounceTimer = window.setTimeout(() => {
+    debounceTimer = null;
+    handleRelevantChange();
+  }, 300);
+});
+
+observer.observe(document.body, { childList: true, subtree: true });
+```
+
+Rules:
+
+- Observe `document.body` with `subtree: true` only when necessary; prefer observing a narrower container once it is detected.
+- Debounce all handler invocations to 150–300 ms.
+- Disconnect the observer after the target panel is fully parsed to avoid continuous scans.
+- Reconnect only when the URL changes or the user opens a new business.
+
+## Caching
+
+Parsed results are cached in memory and IndexedDB so repeated audits of the same business do not trigger full re-parsing.
+
+| Cache layer | Key | TTL | Purpose |
+| --- | --- | --- | --- |
+| In-memory (Map) | Place ID + page type | Session | Instant re-renders when switching tabs |
+| IndexedDB | Place ID + hash of visible text | 5 minutes | Survives popup close and panel collapse |
+
+Cache invalidation happens when:
+
+- The Maps URL changes
+- The user clicks **Refresh** in the UI
+- A manual mutation is detected in the business panel (e.g., the user expands the hours section)
+
+```typescript
+// src/services/cache.ts (proposed/spec)
+const sessionCache = new Map<string, ParsedResult>();
+
+async function getCachedResult(key: string): Promise<ParsedResult | null> {
+  const mem = sessionCache.get(key);
+  if (mem) return mem;
+
+  const db = await openCacheDb();
+  const row = await db.get('results', key);
+  if (row && Date.now() - row.ts < 5 * 60 * 1000) {
+    sessionCache.set(key, row.data);
+    return row.data;
+  }
+  return null;
+}
+```
+
+## Lazy loading
+
+Dashboard and side-panel sections load incrementally. The initial render shows skeleton placeholders, then each section resolves as its parser completes.
+
+```tsx
+// src/components/AuditPanel.tsx (proposed/spec)
+<Suspense fallback={<LoadingSkeleton lines={4} />}>
+  <BusinessSection />
+</Suspense>
+<Suspense fallback={<LoadingSkeleton lines={3} />}>
+  <ReviewsSection />
+</Suspense>
+```
+
+Lazy loading rules:
+
+- Use `React.lazy` for sections that are not visible in the first viewport.
+- Do not lazy-load the business header and score card; they are critical for the first paint.
+- Prefetch the Competitors section only after the primary audit completes.
+
+## Skeleton loader checklist
+
+While an audit runs, the UI displays a progressive checklist with skeleton blocks. This reassures the user that work is happening and sets expectations for each step.
+
+```tsx
+// src/components/AuditProgress.tsx (proposed/spec)
+const STEPS = [
+  'Analyzing Business…',
+  'Business information',
+  'Categories',
+  'Reviews',
+  'Website',
+  'Competitors',
+];
+
+export function AuditProgress({ completed }: { completed: string[] }) {
+  return (
+    <div className="space-y-2">
+      {STEPS.map((step) => (
+        <div key={step} className="flex items-center gap-2">
+          {completed.includes(step) ? (
+            <CheckIcon className="text-success" />
+          ) : (
+            <Spinner className="text-info" />
+          )}
+          <span className={completed.includes(step) ? 'text-text-secondary' : 'text-text-primary'}>
+            {step}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+## Error boundaries
+
+Each major mount point (popup, side panel, dashboard) wraps its React tree in an error boundary so parser crashes or unexpected DOM shapes do not crash the entire extension.
+
+```tsx
+// src/components/ErrorBoundary.tsx (proposed/spec)
+export class ErrorBoundary extends React.Component<
+  { fallback: React.ReactNode },
+  { hasError: boolean }
+> {
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[GBP Auditor] ErrorBoundary caught:', error, info);
+  }
+
+  render() {
+    if (this.state.hasError) return this.props.fallback;
+    return this.props.children;
+  }
+}
+```
+
+The fallback UI shows a compact error card with a **Reload** button that clears the cache and remounts the panel.
+
+## User-facing error messages
+
+When something goes wrong, the extension shows a message instead of crashing or returning blank data.
+
+| Error situation | User-facing message | UI treatment |
+| --- | --- | --- |
+| Unsupported page | "This page is not supported." | `EmptyState` with icon |
+| DOM change breaks parser | "Some information could not be detected." | `StatusBadge` WARNING on affected fields |
+| Field not found | "N/A" or "Not detected" | Gray muted text in table cells |
+| Website fetch blocked (CORS) | "Unable to verify website. Permission or CORS blocked." | `IssueCard` with INFO status |
+| Review text not loaded | "Reviews not fully loaded on this page." | `EmptyState` with refresh hint |
+| Network offline during audit | "Network unavailable. Audit paused. Retry when online." | Toast or inline banner |
+| Storage quota exceeded | "Storage full. Export or clear old audits to continue." | Alert banner with link to History |
+
+All error text is defined in `src/utils/messages.ts` so copy can be updated in one place and reused across components.
+
+## Next steps
+
+- Review how data is stored locally and kept private on the [Privacy and Security](/engineering/privacy-security) page.
+- Review the phased development plan on the [Roadmap Phases](/roadmap/phases) page.

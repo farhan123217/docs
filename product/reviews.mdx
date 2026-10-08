@@ -1,0 +1,113 @@
+---
+title: "GBP Auditor: Review Analysis"
+description: "Learn how GBP Auditor extracts and presents review metrics, rating distribution, local keyword patterns, and sentiment heuristics from Google Maps review sections."
+sidebarTitle: "Reviews"
+---
+
+GBP Auditor reads publicly visible review data from a Google Business Profile page to help Local SEO professionals assess review health, identify recurring customer themes, and spot optimization opportunities. The analysis is strictly read-only and based on the review count, average rating, and visible review text present on the Maps page. No review data is fabricated, and no private or moderated content is accessed.
+
+## Review metrics extracted
+
+The following metrics are extracted from the review section of a Maps business panel:
+
+- **Total review count**: the number of reviews displayed
+- **Average rating**: the star rating shown (typically 0.0 to 5.0)
+- **Recent reviews**: a sample of the most recently visible reviews
+- **Rating distribution**: the count or percentage of reviews per star level, if displayed
+
+If a field is not visible on the page, the extension shows **"Not detected"** rather than an estimated value.
+
+### Example review summary card
+
+```text
+Total Reviews     47
+Average Rating    4.2
+5-star            32
+4-star            8
+3-star            4
+2-star            2
+1-star            1
+```
+
+## Rating distribution
+
+The rating distribution section presents the breakdown of reviews by star rating. If Google does not show a histogram for the current business, the extension falls back to counting visible review stars, if feasible, and labels the result as **"Approximate"**. If no breakdown is possible, it shows **"Not detected"**.
+
+### Audit scoring impact
+
+In the [Audit Scoring](/product/audit-scoring) system, the Reviews section contributes up to 15 points. A low total count or low average rating triggers **WARNING** or **MISSING** statuses and reduces the section score.
+
+## Local keyword extraction
+
+GBP Auditor includes a lightweight keyword extraction feature that finds frequently occurring words and phrases in visible review text. This feature does not use an external AI API by default. All processing is done locally using stopword filtering, n-gram extraction, and frequency counting.
+
+### Approach
+
+1. **Collect visible review text**: up to a capped number of reviews displayed on the page
+2. **Normalize text**: lowercasing, removing punctuation, collapsing whitespace
+3. **Remove stopwords**: a fixed English stopword list (e.g., "the", "and", "very", "good")
+4. **Extract n-grams**: unigrams and bigrams that appear more than once
+5. **Rank by frequency**: the most common terms surface as review keywords
+
+### Keyword entry
+
+Each keyword entry in the Review Keywords page shows:
+
+- **Keyword**: the word or phrase
+- **Frequency**: how many times it appeared in the sampled reviews
+- **Sentiment**: a heuristic label if the context is confidently inferable; otherwise **"uncertain"**
+
+### Example keyword table
+
+| Keyword | Frequency | Sentiment |
+| --- | --- | --- |
+| appointment | 12 | uncertain |
+| friendly staff | 8 | positive |
+| long wait | 5 | negative |
+| teeth cleaning | 7 | uncertain |
+
+## Sentiment caveats
+
+Sentiment is inferred only when the surrounding context is strong and unambiguous. GBP Auditor does not use a trained sentiment model by default, so many keywords will be labeled **"uncertain"**.
+
+Rules for local heuristic sentiment:
+
+- **Positive**: keyword appears near clear positive markers such as "excellent", "love", "recommend", "best"
+- **Negative**: keyword appears near clear negative markers such as "terrible", "never", "worst", "rude"
+- **Uncertain**: no clear markers nearby, or mixed context
+
+If an optional AI API is configured in the future, sentiment accuracy may improve. Until then, the extension must not present uncertain sentiment as fact. The label should read: **"Sentiment uncertain. Consider manual review."**
+
+## Review Keywords page
+
+The Review Keywords page is accessed from the primary navigation under **Reviews > Keywords**. It shows the full keyword table with sortable columns:
+
+- **Most frequent**
+- **Alphabetical**
+- **Sentiment** (positive first, negative first, uncertain)
+
+Users can copy a keyword or add it to a local research note. There is no export specific to this page; keywords are included in the full JSON export from the [Export Report](/product/reports-export) page.
+
+## Limitations
+
+- Only visible reviews are analyzed. If Google paginates or hides reviews, those not rendered in the DOM are not collected.
+- Keyword extraction is limited to sampled text and does not represent the full historical review corpus.
+- Sentiment inference is basic and should be treated as a starting point, not a definitive analysis.
+- Review content may change as new reviews are posted; re-run an audit to refresh the data.
+
+## Proposed data models
+
+```ts
+interface ReviewSnapshot {
+  totalCount: number;
+  averageRating: number;
+  distribution: Record<1 | 2 | 3 | 4 | 5, number>;
+}
+
+interface ReviewKeyword {
+  phrase: string;
+  frequency: number;
+  sentiment: "positive" | "negative" | "uncertain";
+  contexts: string[]; // short snippets for context
+}
+```

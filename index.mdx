@@ -1,20 +1,61 @@
 ---
-title: "Introduction"
-description: "Welcome to your project"
+title: "GBP Auditor: Free Chrome Extension for Local SEO Analysis"
+description: "GBP Auditor is a free Chrome Extension that analyzes Google Business Profiles using only visible, public data. Read the product spec, architecture, and build plan."
+sidebarTitle: "Introduction"
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+GBP Auditor (temporary working name) is a free Chrome Extension for Local SEO professionals who want to audit Google Business Profiles and Google Maps search results without paying for APIs or surrendering data to third parties. It reads only the information already visible on the page, scores it against a 100-point framework, and generates actionable reports that stay on your device.
 
-<Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
-</Tip>
+This site is the single source of truth for the product specification, architecture, and build plan. The name and logo are intentionally swappable through a single branding configuration file, so the product can be rebranded without touching code logic.
 
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
-</Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
-</Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
-</Card>
+## Core principles
+
+These constraints shape every feature and engineering decision in GBP Auditor:
+
+**Zero cost.** The extension never requires a paid Google Maps API, SEO data provider, proxy, or scraping service. Analysis is performed locally in the browser using DOM extraction of publicly visible information. Optional, user-provided API keys may be supported later for advanced features, but the core product must work without them.
+
+**Visible data only.** GBP Auditor reads only what is already rendered on the page for the logged-in or logged-out user. It never bypasses CAPTCHA, login walls, rate limits, anti-bot protections, or private account data. If a field is not visible, it is marked "N/A" or "Not detected".
+
+**Read-only analysis.** The product never auto-modifies a Google Business Profile, simulates unauthorized clicks, or impersonates a user. It audits, compares, reports, and exports. It does not post, edit, claim, or delete.
+
+**Never invent data.** When extraction fails or a page is unsupported, the extension surfaces a clear message. It does not hallucinate scores, ranking causation, or guaranteed outcomes. Recommendations are framed as "potential optimization opportunities."
+
+## What you will find in this spec
+
+<CardGroup cols={2}>
+  <Card title="Get Started" icon="rocket" href="/quickstart">
+    Build and load the extension locally in minutes.
+  </Card>
+
+  <Card title="User Flows" icon="diagram-project" href="/product/user-flows">
+    Primary and secondary user journeys from Maps to exported report.
+  </Card>
+
+  <Card title="Entry Points" icon="door-open" href="/product/entry-points">
+    Popup, floating button, side panel, profile and search detection, and context menu.
+  </Card>
+
+  <Card title="Pages & Dashboard" icon="table-columns" href="/product/pages">
+    All 19 pages, primary navigation, and dashboard specification.
+  </Card>
+
+  <Card title="Audit Scoring" icon="chart-bar" href="/product/audit-scoring">
+    100-point scoring model, checks, and status definitions.
+  </Card>
+
+  <Card title="Architecture" icon="code" href="/architecture/overview">
+    System design, parser, storage, and engineering standards.
+  </Card>
+
+  <Card title="Privacy & Security" icon="shield-halved" href="/engineering/privacy-security">
+    Permissions model, data handling, and privacy guarantees.
+  </Card>
+
+  <Card title="Build Phases" icon="list-check" href="/roadmap/phases">
+    16-phase development roadmap from scaffold to release.
+  </Card>
+</CardGroup>
+
+## Screenshot mapping status
+
+The reference screenshots document (DOCX) was not provided with this specification. As a result, no screenshot-to-component mapping exists yet. When screenshots are received, the mapping should be added to the relevant product surfaces and analysis module pages only. No placeholder mapping should be invented.

@@ -1,0 +1,299 @@
+---
+title: "Design System, Tokens, and Shared Components"
+sidebarTitle: "Design System"
+description: " GBP Auditor design tokens, Tailwind configuration, shared React components, and dark mode strategy. Built for a modern, minimal SEO-tool aesthetic."
+---
+
+GBP Auditor uses a single, consistent design system across the popup, side panel, dashboard, and floating button. All visual decisions are expressed as Tailwind CSS tokens and reusable React components so the UI remains predictable as the product grows.
+
+## Design tokens
+
+Tokens are implemented as Tailwind theme extensions in `tailwind.config.ts`. All values are static strings (no dynamic JS) so Tailwind can purge unused styles at build time.
+
+### Proposed token table
+
+| Token | Light | Dark | Tailwind key | Notes |
+| --- | --- | --- | --- | --- |
+| Background page | `#ffffff` | `#0f172a` | `colors.page` | Panel and popup root |
+| Background card | `#f8fafc` | `#1e293b` | `colors.card` | Cards, tables, drawers |
+| Background elevated | `#ffffff` | `#334155` | `colors.elevated` | Modals, dropdowns |
+| Text primary | `#0f172a` | `#f1f5f9` | `colors.text.primary` | Headings, body |
+| Text secondary | `#64748b` | `#94a3b8` | `colors.text.secondary` | Captions, metadata |
+| Text muted | `#94a3b8` | `#64748b` | `colors.text.muted` | Placeholders, disabled |
+| Border | `#e2e8f0` | `#334155` | `colors.border` | Dividers, outlines |
+| Success | `#22c55e` | `#22c55e` | `colors.success` | PASS, matched NAP |
+| Warning | `#f59e0b` | `#f59e0b` | `colors.warning` | WARNING, possible mismatch |
+| Error | `#ef4444` | `#ef4444` | `colors.error` | MISSING, errors |
+| Info | `#3b82f6` | `#3b82f6` | `colors.info` | Links, hints |
+| Font family | `Inter, system-ui, sans-serif` | same | `fontFamily.sans` | Single stack everywhere |
+| Font size base | `14px` | `14px` | `fontSize.base` | Side panel and popup |
+| Font size sm | `12px` | `12px` | `fontSize.sm` | Captions, badges |
+| Border radius | `8px` | `8px` | `borderRadius.DEFAULT` | Cards, buttons |
+| Shadow sm | `0 1px 2px rgb(0 0 0 / 0.05)` | `0 1px 2px rgb(0 0 0 / 0.25)` | `boxShadow.sm` | Cards |
+| Shadow md | `0 4px 6px rgb(0 0 0 / 0.07)` | `0 4px 6px rgb(0 0 0 / 0.3)` | `boxShadow.md` | Modals, drawers |
+| Spacing unit | `4px` | `4px` | `spacing.1` | 4px grid |
+
+### Proposed Tailwind config sketch
+
+```typescript
+// tailwind.config.ts (proposed/spec)
+import type { Config } from 'tailwindcss';
+
+const config: Config = {
+  darkMode: 'class',
+  content: ['./src/**/*.{ts,tsx}'],
+  theme: {
+    extend: {
+      colors: {
+        page: { DEFAULT: '#ffffff', dark: '#0f172a' },
+        card: { DEFAULT: '#f8fafc', dark: '#1e293b' },
+        elevated: { DEFAULT: '#ffffff', dark: '#334155' },
+        text: {
+          primary: { DEFAULT: '#0f172a', dark: '#f1f5f9' },
+          secondary: { DEFAULT: '#64748b', dark: '#94a3b8' },
+          muted: { DEFAULT: '#94a3b8', dark: '#64748b' },
+        },
+        border: { DEFAULT: '#e2e8f0', dark: '#334155' },
+        success: '#22c55e',
+        warning: '#f59e0b',
+        error: '#ef4444',
+        info: '#3b82f6',
+      },
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+      },
+      borderRadius: {
+        DEFAULT: '8px',
+      },
+      boxShadow: {
+        sm: '0 1px 2px rgba(0,0,0,0.05)',
+        md: '0 4px 6px rgba(0,0,0,0.07)',
+      },
+    },
+  },
+  plugins: [],
+};
+
+export default config;
+```
+
+## Dark mode strategy
+
+Dark mode uses the `class` strategy. The root element of each mount point (popup, side panel, dashboard iframe) receives `class="dark"` when the theme is set to dark or when the system prefers dark and the theme is set to `"system"`.
+
+```tsx
+// src/hooks/useTheme.ts (proposed/spec)
+export function useTheme() {
+  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const isDark =
+      theme === 'dark' ||
+      (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    root.classList.toggle('dark', isDark);
+  }, [theme]);
+
+  return { theme, setTheme };
+}
+```
+
+Color tokens are defined for both modes using the `{ DEFAULT, dark }` pattern. Utility classes like `bg-page text-text-primary` work in both themes because the values swap automatically when the parent has `.dark`.
+
+## Shared components
+
+Components are organized under `/src/components` and follow a single-responsibility rule. Props use strict TypeScript interfaces. No component exceeds ~250 lines; complex layouts decompose into smaller sub-components.
+
+### Component list
+
+| Component | Responsibility |
+| --- | --- |
+| `AppShell` | Layout wrapper with theme class, font, and base padding |
+| `Sidebar` | Collapsible navigation for the dashboard and full pages |
+| `Topbar` | Title, breadcrumb, and global actions (export, settings) |
+| `Popup` | Root layout for the ~400px extension popup |
+| `FloatingButton` | The `[GBP]` button injected into Maps pages; position, visibility, and z-index |
+| `SidePanel` | 320–450px panel with header, tabs, and collapse/expand/close controls |
+| `BusinessHeader` | Business name, rating, review count, and category badge |
+| `ScoreCard` | Large circular or linear score display with color-coded ring |
+| `AuditCard` | A card for an audit section with title, score, and issue list |
+| `MetricCard` | Small card for a single metric with label, value, and optional change indicator |
+| `IssueCard` | A single issue row with status icon, label, and explanation |
+| `OpportunityCard` | Issue title, why it matters, and suggested action |
+| `DataTable` | Responsive table with horizontal scroll, sortable headers, and row actions |
+| `CategoryBadge` | Styled badge for primary or additional categories |
+| `RatingBadge` | Star rating display with numeric value and review count |
+| `StatusBadge` | Small badge for PASS / WARNING / MISSING / OPPORTUNITY states |
+| `SearchBar` | Input with icon, clear button, and optional debounced onChange |
+| `FilterBar` | Horizontal list of filter pills with active state |
+| `Tabs` | Accessible tab list with keyboard navigation and aria roles |
+| `Modal` | Centered overlay with focus trap, escape to close, and action footer |
+| `Drawer` | Slide-in panel for mobile or secondary detail views |
+| `Tooltip` | Hover-triggered info bubble using native `title` or a custom portal |
+| `EmptyState` | Illustration, message, and call-to-action for empty lists |
+| `LoadingSkeleton` | Placeholder blocks for cards, tables, and text while data loads |
+| `ExportButton` | Dropdown button with print, CSV, JSON, and copy actions |
+| `Pagination` | Page numbers and previous/next for long tables |
+| `ConfirmDialog` | Modal with destructive confirmation pattern and cancel button |
+
+## Responsive sizes
+
+The extension targets three canonical widths:
+
+- **Popup**: 400px wide, height auto up to 600px
+- **Side panel**: 320px (compact) to 450px (expanded), full viewport height
+- **Dashboard / full pages**: responsive from 768px upward; tables scroll horizontally on narrow viewports
+
+All components use relative units and Tailwind responsive prefixes (`md:`, `lg:`) where needed. The side panel and popup do not support breakpoints below their fixed widths; instead, they rely on internal scrolling and compact component variants.
+
+## Next steps
+
+- Review performance guidelines and error handling on the [Performance and Errors](/engineering/performance-errors) page.
+- Review the Maps parser architecture on the [Maps Parser](/architecture/maps-parser) page.
+
+GBP Auditor uses a single, consistent design system across the popup, side panel, dashboard, and floating button. All visual decisions are expressed as Tailwind CSS tokens and reusable React components so the UI remains predictable as the product grows.
+
+## Design tokens
+
+Tokens are implemented as Tailwind theme extensions in `tailwind.config.ts`. All values are static strings (no dynamic JS) so Tailwind can purge unused styles at build time.
+
+### Proposed token table
+
+| Token | Light | Dark | Tailwind key | Notes |
+| --- | --- | --- | --- | --- |
+| Background page | `#ffffff` | `#0f172a` | `colors.page` | Panel and popup root |
+| Background card | `#f8fafc` | `#1e293b` | `colors.card` | Cards, tables, drawers |
+| Background elevated | `#ffffff` | `#334155` | `colors.elevated` | Modals, dropdowns |
+| Text primary | `#0f172a` | `#f1f5f9` | `colors.text.primary` | Headings, body |
+| Text secondary | `#64748b` | `#94a3b8` | `colors.text.secondary` | Captions, metadata |
+| Text muted | `#94a3b8` | `#64748b` | `colors.text.muted` | Placeholders, disabled |
+| Border | `#e2e8f0` | `#334155` | `colors.border` | Dividers, outlines |
+| Success | `#22c55e` | `#22c55e` | `colors.success` | PASS, matched NAP |
+| Warning | `#f59e0b` | `#f59e0b` | `colors.warning` | WARNING, possible mismatch |
+| Error | `#ef4444` | `#ef4444` | `colors.error` | MISSING, errors |
+| Info | `#3b82f6` | `#3b82f6` | `colors.info` | Links, hints |
+| Font family | `Inter, system-ui, sans-serif` | same | `fontFamily.sans` | Single stack everywhere |
+| Font size base | `14px` | `14px` | `fontSize.base` | Side panel and popup |
+| Font size sm | `12px` | `12px` | `fontSize.sm` | Captions, badges |
+| Border radius | `8px` | `8px` | `borderRadius.DEFAULT` | Cards, buttons |
+| Shadow sm | `0 1px 2px rgb(0 0 0 / 0.05)` | `0 1px 2px rgb(0 0 0 / 0.25)` | `boxShadow.sm` | Cards |
+| Shadow md | `0 4px 6px rgb(0 0 0 / 0.07)` | `0 4px 6px rgb(0 0 0 / 0.3)` | `boxShadow.md` | Modals, drawers |
+| Spacing unit | `4px` | `4px` | `spacing.1` | 4px grid |
+
+### Proposed Tailwind config sketch
+
+```typescript
+// tailwind.config.ts (proposed/spec)
+import type { Config } from 'tailwindcss';
+
+const config: Config = {
+  darkMode: 'class',
+  content: ['./src/**/*.{ts,tsx}'],
+  theme: {
+    extend: {
+      colors: {
+        page: { DEFAULT: '#ffffff', dark: '#0f172a' },
+        card: { DEFAULT: '#f8fafc', dark: '#1e293b' },
+        elevated: { DEFAULT: '#ffffff', dark: '#334155' },
+        text: {
+          primary: { DEFAULT: '#0f172a', dark: '#f1f5f9' },
+          secondary: { DEFAULT: '#64748b', dark: '#94a3b8' },
+          muted: { DEFAULT: '#94a3b8', dark: '#64748b' },
+        },
+        border: { DEFAULT: '#e2e8f0', dark: '#334155' },
+        success: '#22c55e',
+        warning: '#f59e0b',
+        error: '#ef4444',
+        info: '#3b82f6',
+      },
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+      },
+      borderRadius: {
+        DEFAULT: '8px',
+      },
+      boxShadow: {
+        sm: '0 1px 2px rgba(0,0,0,0.05)',
+        md: '0 4px 6px rgba(0,0,0,0.07)',
+      },
+    },
+  },
+  plugins: [],
+};
+
+export default config;
+```
+
+## Dark mode strategy
+
+Dark mode uses the `class` strategy. The root element of each mount point (popup, side panel, dashboard iframe) receives `class="dark"` when the theme is set to dark or when the system prefers dark and the theme is set to `"system"`.
+
+```tsx
+// src/hooks/useTheme.ts (proposed/spec)
+export function useTheme() {
+  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const isDark =
+      theme === 'dark' ||
+      (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    root.classList.toggle('dark', isDark);
+  }, [theme]);
+
+  return { theme, setTheme };
+}
+```
+
+Color tokens are defined for both modes using the `{ DEFAULT, dark }` pattern. Utility classes like `bg-page text-text-primary` work in both themes because the values swap automatically when the parent has `.dark`.
+
+## Shared components
+
+Components are organized under `/src/components` and follow a single-responsibility rule. Props use strict TypeScript interfaces. No component exceeds ~250 lines; complex layouts decompose into smaller sub-components.
+
+### Component list
+
+| Component | Responsibility |
+| --- | --- |
+| `AppShell` | Layout wrapper with theme class, font, and base padding |
+| `Sidebar` | Collapsible navigation for the dashboard and full pages |
+| `Topbar` | Title, breadcrumb, and global actions (export, settings) |
+| `Popup` | Root layout for the ~400px extension popup |
+| `FloatingButton` | The `[GBP]` button injected into Maps pages; position, visibility, and z-index |
+| `SidePanel` | 320–450px panel with header, tabs, and collapse/expand/close controls |
+| `BusinessHeader` | Business name, rating, review count, and category badge |
+| `ScoreCard` | Large circular or linear score display with color-coded ring |
+| `AuditCard` | A card for an audit section with title, score, and issue list |
+| `MetricCard` | Small card for a single metric with label, value, and optional change indicator |
+| `IssueCard` | A single issue row with status icon, label, and explanation |
+| `OpportunityCard` | Issue title, why it matters, and suggested action |
+| `DataTable` | Responsive table with horizontal scroll, sortable headers, and row actions |
+| `CategoryBadge` | Styled badge for primary or additional categories |
+| `RatingBadge` | Star rating display with numeric value and review count |
+| `StatusBadge` | Small badge for PASS / WARNING / MISSING / OPPORTUNITY states |
+| `SearchBar` | Input with icon, clear button, and optional debounced onChange |
+| `FilterBar` | Horizontal list of filter pills with active state |
+| `Tabs` | Accessible tab list with keyboard navigation and aria roles |
+| `Modal` | Centered overlay with focus trap, escape to close, and action footer |
+| `Drawer` | Slide-in panel for mobile or secondary detail views |
+| `Tooltip` | Hover-triggered info bubble using native `title` or a custom portal |
+| `EmptyState` | Illustration, message, and call-to-action for empty lists |
+| `LoadingSkeleton` | Placeholder blocks for cards, tables, and text while data loads |
+| `ExportButton` | Dropdown button with print, CSV, JSON, and copy actions |
+| `Pagination` | Page numbers and previous/next for long tables |
+| `ConfirmDialog` | Modal with destructive confirmation pattern and cancel button |
+
+## Responsive sizes
+
+The extension targets three canonical widths:
+
+- **Popup**: 400px wide, height auto up to 600px
+- **Side panel**: 320px (compact) to 450px (expanded), full viewport height
+- **Dashboard / full pages**: responsive from 768px upward; tables scroll horizontally on narrow viewports
+
+All components use relative units and Tailwind responsive prefixes (`md:`, `lg:`) where needed. The side panel and popup do not support breakpoints below their fixed widths; instead, they rely on internal scrolling and compact component variants.
+
+## Next steps
+
+- Review performance guidelines and error handling on the [Performance and Errors](/engineering/performance-errors) page.
+- Review the Maps parser architecture on the [Maps Parser](/architecture/maps-parser) page.

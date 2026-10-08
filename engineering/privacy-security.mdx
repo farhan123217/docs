@@ -1,0 +1,201 @@
+---
+title: "Privacy Commitments and Security Rules"
+sidebarTitle: "Privacy and Security"
+description: "GBP Auditor privacy commitments, security rules, XSS prevention, sanitization, and an honest statement of limitations. No backend, no login, local processing first."
+---
+
+GBP Auditor is designed to analyze only the Google Business Profile information that is already visible to the user in the browser. This page documents the privacy commitments built into the product, the security rules that guide development, and the honest limits that users and stakeholders should understand.
+
+## Privacy commitments
+
+GBP Auditor does not require an account, does not run a backend, and does not monetize user data. The following commitments apply to the current version and are enforced by architecture, not just policy.
+
+- **No account required** — there is no login, no email collection, and no user profiles stored on a server.
+- **Local processing first** — all parsing, scoring, and comparison happens in the browser. Data is processed where possible before any optional external API is used.
+- **No selling of data** — audit results, history, favorites, and settings are never sold, shared, or transferred to third parties.
+- **No unnecessary tracking** — there are no hidden analytics scripts, no fingerprinting, and no behavioral tracking pixels.
+- **No paid API by default** — the extension does not require a paid API key. Optional user-provided keys are stored locally and used only for the features the user explicitly enables.
+- **User can delete data** — history, favorites, settings, and cached results can be deleted permanently from the Settings or History pages. Uninstalling the extension also removes all local data.
+
+These commitments are surfaced to end users on the Privacy page inside the extension and can be updated via the single branding config if the product name changes.
+
+## What we do not claim
+
+The privacy page must be honest and must not overstate guarantees:
+
+- We do **not** claim "100% private" because the browser itself, Google Maps, and any optional third-party API the user chooses to add are outside our control.
+- We do **not** claim zero data transmission, because the extension operates inside Google Maps and communicates with the Maps page via standard content-script APIs.
+- We do **not** promise that Google cannot observe usage patterns on its own platform.
+
+## Security never-list
+
+The following actions are explicitly prohibited in code, review, and policy:
+
+| Prohibited action | Why it matters |
+| --- | --- |
+| Store passwords or credentials | No authentication system exists; no secrets should be kept |
+| Capture cookies or session tokens | Would violate user trust and potentially Google ToS |
+| Access private accounts or data behind login | Only public, visible Maps data may be analyzed |
+| Bypass CAPTCHA, login walls, or anti-bot measures | Illegal and unethical; product must fail gracefully instead |
+| Steal sessions or impersonate users | Would be a critical security vulnerability |
+| Send browsing history to external servers | Product is offline-first; no telemetry endpoint exists |
+| Auto-modify a GBP or simulate unauthorized clicks | Product is read-only by design |
+| Inject scripts into non-Google host pages | Host permissions are limited to Maps domains only |
+
+## XSS and sanitization rules
+
+Because the extension reads untrusted DOM text from Google Maps and injects UI into the page, all text must be sanitized before rendering.
+
+### Rules
+
+1. **Never use `dangerouslySetInnerHTML`** with Maps-derived text.
+2. **Always treat innerText as untrusted** and pass it through React’s default escaping.
+3. **For URLs extracted from the DOM**, validate with the `URL` constructor and restrict protocols to `http:` and `https:`.
+4. **For user-generated content** (custom service names, notes), strip HTML by converting to text nodes before storage.
+
+### Proposed sanitizer
+
+```typescript
+// src/utils/sanitize.ts (proposed/spec)
+export function sanitizeText(input: string | null | undefined): string {
+  if (!input) return '';
+  // Remove script/style tags and event handlers as a defense-in-depth step
+  return input
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+    .replace(/on\w+\s*=\s*["'][^"']*["']/gi, '');
+}
+
+export function isValidHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+```
+
+## Permission model
+
+Permissions are kept to the minimum required for Manifest V3.
+
+- **Required permissions**: `storage`, `activeTab`, `scripting`
+- **Required host permissions**: `https://www.google.com/maps/*`, `https://maps.google.com/*`
+- **Optional host permissions**: requested at runtime when the user enables website analysis; limited to the website hostname extracted from the Maps panel
+
+No `tabs`, `history`, `cookies`, or `webRequest` permissions are declared in the manifest.
+
+## Honest limits
+
+Security and privacy guarantees are bounded by what the browser and Google Maps allow:
+
+- **Google can change Maps at any time** — DOM selectors may break, which can cause partial data or inaccurate scores until the parser is updated.
+- **Website analysis requires user consent** — fetching a business website to compare NAP or analyze meta tags requires the user to approve an optional host permission and is subject to CORS and bot-mitigation measures.
+- **Photo counts are approximate** — the extension counts visible photo indicators, not exact Google-internal counts.
+- **Sentiment is inferred** — review sentiment is marked as uncertain unless the language is clearly positive or negative; no AI service is required by default.
+
+For the full list of known limitations, see the [Limitations and Future Features](/roadmap/limitations) page.
+
+## Next steps
+
+- Review how data is stored and managed locally on the [History and Settings](/product/history-settings) page.
+- Review the testing strategy on the [Testing](/engineering/testing) page.
+
+GBP Auditor is designed to analyze only the Google Business Profile information that is already visible to the user in the browser. This page documents the privacy commitments built into the product, the security rules that guide development, and the honest limits that users and stakeholders should understand.
+
+## Privacy commitments
+
+GBP Auditor does not require an account, does not run a backend, and does not monetize user data. The following commitments apply to the current version and are enforced by architecture, not just policy.
+
+- **No account required** — there is no login, no email collection, and no user profiles stored on a server.
+- **Local processing first** — all parsing, scoring, and comparison happens in the browser. Data is processed where possible before any optional external API is used.
+- **No selling of data** — audit results, history, favorites, and settings are never sold, shared, or transferred to third parties.
+- **No unnecessary tracking** — there are no hidden analytics scripts, no fingerprinting, and no behavioral tracking pixels.
+- **No paid API by default** — the extension does not require a paid API key. Optional user-provided keys are stored locally and used only for the features the user explicitly enables.
+- **User can delete data** — history, favorites, settings, and cached results can be deleted permanently from the Settings or History pages. Uninstalling the extension also removes all local data.
+
+These commitments are surfaced to end users on the Privacy page inside the extension and can be updated via the single branding config if the product name changes.
+
+## What we do not claim
+
+The privacy page must be honest and must not overstate guarantees:
+
+- We do **not** claim "100% private" because the browser itself, Google Maps, and any optional third-party API the user chooses to add are outside our control.
+- We do **not** claim zero data transmission, because the extension operates inside Google Maps and communicates with the Maps page via standard content-script APIs.
+- We do **not** promise that Google cannot observe usage patterns on its own platform.
+
+## Security never-list
+
+The following actions are explicitly prohibited in code, review, and policy:
+
+| Prohibited action | Why it matters |
+| --- | --- |
+| Store passwords or credentials | No authentication system exists; no secrets should be kept |
+| Capture cookies or session tokens | Would violate user trust and potentially Google ToS |
+| Access private accounts or data behind login | Only public, visible Maps data may be analyzed |
+| Bypass CAPTCHA, login walls, or anti-bot measures | Illegal and unethical; product must fail gracefully instead |
+| Steal sessions or impersonate users | Would be a critical security vulnerability |
+| Send browsing history to external servers | Product is offline-first; no telemetry endpoint exists |
+| Auto-modify a GBP or simulate unauthorized clicks | Product is read-only by design |
+| Inject scripts into non-Google host pages | Host permissions are limited to Maps domains only |
+
+## XSS and sanitization rules
+
+Because the extension reads untrusted DOM text from Google Maps and injects UI into the page, all text must be sanitized before rendering.
+
+### Rules
+
+1. **Never use `dangerouslySetInnerHTML`** with Maps-derived text.
+2. **Always treat innerText as untrusted** and pass it through React’s default escaping.
+3. **For URLs extracted from the DOM**, validate with the `URL` constructor and restrict protocols to `http:` and `https:`.
+4. **For user-generated content** (custom service names, notes), strip HTML by converting to text nodes before storage.
+
+### Proposed sanitizer
+
+```typescript
+// src/utils/sanitize.ts (proposed/spec)
+export function sanitizeText(input: string | null | undefined): string {
+  if (!input) return '';
+  // Remove script/style tags and event handlers as a defense-in-depth step
+  return input
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+    .replace(/on\w+\s*=\s*["'][^"']*["']/gi, '');
+}
+
+export function isValidHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+```
+
+## Permission model
+
+Permissions are kept to the minimum required for Manifest V3.
+
+- **Required permissions**: `storage`, `activeTab`, `scripting`
+- **Required host permissions**: `https://www.google.com/maps/*`, `https://maps.google.com/*`
+- **Optional host permissions**: requested at runtime when the user enables website analysis; limited to the website hostname extracted from the Maps panel
+
+No `tabs`, `history`, `cookies`, or `webRequest` permissions are declared in the manifest.
+
+## Honest limits
+
+Security and privacy guarantees are bounded by what the browser and Google Maps allow:
+
+- **Google can change Maps at any time** — DOM selectors may break, which can cause partial data or inaccurate scores until the parser is updated.
+- **Website analysis requires user consent** — fetching a business website to compare NAP or analyze meta tags requires the user to approve an optional host permission and is subject to CORS and bot-mitigation measures.
+- **Photo counts are approximate** — the extension counts visible photo indicators, not exact Google-internal counts.
+- **Sentiment is inferred** — review sentiment is marked as uncertain unless the language is clearly positive or negative; no AI service is required by default.
+
+For the full list of known limitations, see the [Limitations and Future Features](/roadmap/limitations) page.
+
+## Next steps
+
+- Review how data is stored and managed locally on the [History and Settings](/product/history-settings) page.
+- Review the testing strategy on the [Testing](/engineering/testing) page.

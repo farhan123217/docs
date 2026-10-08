@@ -1,47 +1,178 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Quickstart: Build and Load GBP Auditor Locally"
+description: "Build GBP Auditor from source using Vite, TypeScript, and React, then load the unpacked extension in Chrome and verify it on a real Google Maps business page."
+sidebarTitle: "Quickstart"
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+This guide gets you from an empty directory to a running GBP Auditor extension in Chrome. The first milestone is detecting a real Google Maps business page and extracting visible information, which validates the parser, content script, and messaging pipeline.
 
 ## Prerequisites
 
-Before you begin, you must have:
+Before you begin, make sure you have:
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
+- [Node.js](https://nodejs.org/) 18 or higher
+- [npm](https://www.npmjs.com/) 9 or higher
+- Google Chrome 116 or higher with Developer Mode enabled
+- A Google Maps business page open for verification (for example, search for a local restaurant or service)
 
-## Get started
+## Scaffold the project
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Create the project folder">
+    Initialize a new Vite project with the React and TypeScript template, then enter the directory.
 
     ```bash
-    npm install your-package
+    npm create vite@latest gbp-auditor -- --template react-ts
+    cd gbp-auditor
     ```
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+  <Step title="Install dependencies">
+    Install the build tooling and runtime libraries used across popup, content scripts, and side panel.
 
     ```bash
-    your-cli init
+    npm install
+    npm install -D @types/chrome tailwindcss postcss autoprefixer
+    npx tailwindcss init -p
     ```
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+  <Step title="Configure Tailwind">
+    Update `tailwind.config.js` to scan the extension source folders and enable dark mode via class.
+
+    ```js
+    /** @type {import('tailwindcss').Config} */
+    export default {
+      darkMode: 'class',
+      content: [
+        './index.html',
+        './src/**/*.{js,ts,jsx,tsx}',
+      ],
+      theme: {
+        extend: {},
+      },
+      plugins: [],
+    }
+    ```
+  </Step>
+  <Step title="Add the Tailwind directive">
+    Create or update `src/index.css` to include the Tailwind directives.
+
+    ```css
+    @tailwind base;
+    @tailwind components;
+    @tailwind utilities;
+    ```
+  </Step>
+  <Step title="Configure the Vite build for Chrome Extension">
+    Update `vite.config.ts` to build multiple entry points for popup, content scripts, background service worker, and side panel. This is a proposed configuration.
+
+    ```ts
+    import { defineConfig } from 'vite'
+    import react from '@vitejs/plugin-react'
+    import { resolve } from 'path'
+    
+    export default defineConfig({
+      plugins: [react()],
+      build: {
+        rollupOptions: {
+          input: {
+            popup: resolve(__dirname, 'popup.html'),
+            sidepanel: resolve(__dirname, 'sidepanel.html'),
+            background: resolve(__dirname, 'src/background/index.ts'),
+            content: resolve(__dirname, 'src/content/index.ts'),
+          },
+          output: {
+            entryFileNames: 'assets/[name].js',
+            chunkFileNames: 'assets/[name].js',
+            assetFileNames: 'assets/[name].[ext]',
+          },
+        },
+      },
+    })
+    ```
+  </Step>
+  <Step title="Create the manifest">
+    Add `public/manifest.json` with the minimum permissions required for Google Maps domains. This manifest is proposed and should be updated as features are added.
+
+    ```json
+    {
+      "manifest_version": 3,
+      "name": "GBP Auditor",
+      "version": "1.0.0",
+      "description": "Free Local SEO analysis for Google Business Profiles and Maps results.",
+      "permissions": ["storage", "scripting", "activeTab"],
+      "host_permissions": [
+        "https://www.google.com/maps/*",
+        "https://maps.google.com/*"
+      ],
+      "action": {
+        "default_popup": "popup.html",
+        "default_icon": {
+          "16": "icons/icon16.png",
+          "32": "icons/icon32.png",
+          "48": "icons/icon48.png",
+          "128": "icons/icon128.png"
+        }
+      },
+      "background": {
+        "service_worker": "assets/background.js"
+      },
+      "content_scripts": [
+        {
+          "matches": [
+            "https://www.google.com/maps/*",
+            "https://maps.google.com/*"
+          ],
+          "js": ["assets/content.js"],
+          "run_at": "document_idle"
+        }
+      ],
+      "icons": {
+        "16": "icons/icon16.png",
+        "32": "icons/icon32.png",
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
+      }
+    }
+    ```
+  </Step>
+  <Step title="Build the extension">
+    Compile the TypeScript source and generate the output bundle.
 
     ```bash
-    your-cli start
+    npm run build
     ```
+
+    The build artifacts are written to the `dist/` folder.
+  </Step>
+  <Step title="Load in Chrome">
+    1. Open Chrome and navigate to `chrome://extensions`.
+    2. Enable **Developer mode** using the toggle in the top-right corner.
+    3. Click **Load unpacked**.
+    4. Select the `dist/` folder from your project directory.
+    5. Confirm that the GBP Auditor icon appears in the Chrome toolbar.
+  </Step>
+  <Step title="Verify on a real Maps business page">
+    1. Navigate to [Google Maps](https://www.google.com/maps) and open any local business profile.
+    2. Click the GBP Auditor icon in the Chrome toolbar.
+    3. Confirm that the popup shows **Google Maps detected** and displays the current business name.
+    4. Click **Audit Current Business** and confirm that visible fields (name, category, rating, review count, address, phone, website) populate without errors.
+
+    If detection fails, check the content script console for selector mismatches. The parser uses multiple fallback strategies, so the first real-world DOM test may expose adjustments needed in `src/services/GoogleMapsParser.ts`.
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+## First milestone checklist
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+Use this checklist to confirm the first milestone is complete before moving to additional features.
+
+- [ ] `npm run build` completes without TypeScript or Vite errors
+- [ ] Extension loads successfully in `chrome://extensions` with no manifest warnings
+- [ ] Popup renders on Google Maps business pages and shows the **Google Maps detected** status
+- [ ] Business name is extracted and displayed in the popup
+- [ ] At least three visible fields (rating, review count, category) are parsed correctly
+- [ ] No console errors from the content script or background service worker
+- [ ] Unsupported pages show **This page is not supported** instead of crashing
+
+## Next steps
+
+When the first milestone passes, continue with the build phases outlined in [Build Phases](/roadmap/phases). The next priority is implementing the Maps side panel, audit scoring engine, and competitor extraction from search results.

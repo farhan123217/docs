@@ -1,0 +1,168 @@
+---
+title: "Manifest, Permissions, and Build"
+sidebarTitle: "Manifest & Permissions"
+description: "Proposed Manifest V3 declaration, host and browser permissions with justifications, runtime request patterns for website analysis, and the build and load process."
+---
+
+The GBP Auditor extension requests only the permissions it absolutely needs to read publicly visible business data. This page contains the proposed `manifest.json`, explains why each permission is necessary (or deliberately avoided), and how optional website analysis permissions are gated behind a user approval flow.
+
+### Proposed Manifest V3
+
+```json
+{
+  "manifest_version": 3,
+  "name": "GBP Auditor",
+  "version": "1.0.0",
+  "description": "Analyze Google Business Profiles and Google Maps search results with a local, offline-first audit engine.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_popup": "popup/index.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "background": {
+    "service_worker": "background/index.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.google.com/maps*",
+        "*://www.google.com/maps*",
+        "*://maps.google.com/*"
+      ],
+      "js": ["content/index.js"],
+      "css": ["content/styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "storage",
+    "scripting",
+    "activeTab",
+    "tabs",
+    "contextMenus"
+  ],
+  "optional_permissions": [
+    "history"
+  ],
+  "host_permissions": [
+    "*://*.google.com/maps*"
+  ],
+  "optional_host_permissions": [
+    "<all_urls>"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*", "content/*"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "options_page": "popup/index.html#/settings"
+}
+```
+
+### Permission Justifications
+
+| Permission | Why It Is Used | What USD Does NOT Do With It |
+| --- | --- | --- |
+| `storage` | Persist parsed profile data, history records, saved businesses, settings, and cached results. All storage is local. | Access server databases, sync to remote accounts, or store credentials. |
+| `scripting` | Inject the side-panel container and floating button into a Maps page. Used only on Google Maps host permissions. | Run scripts on arbitrary pages without user interaction or host approval. |
+| `activeTab` | Allow the popup to temporarily inspect the current tab so a user can initiate an audit without a persistent content script on every page. | Read closed tabs, record browsing history, or access background-webpage state. |
+| `tabs` | Query which tabs are open on Google Maps so the background worker can set the badge text and route messages to the correct tab. | Capture full URL histories or cross-origin tab content outside Maps. |
+| `contextMenus` | Add a right-click context-menu item such as "Audit this business with GBP Auditor" when the user is on a Maps page. | Track all clicks or inject content through the menu itself. |
+| `host_permissions: google.com/maps*` | Content script only runs here. Maps search results and business profiles are both under this host wildcard. | Touch other Google properties like Gmail or Search. |
+| `optional_permissions: history` | Only requested if the user enables "Show recent Business Audits in Dashboard" and explicitly grants it; otherwise not used. | Auto-collect or export browsing history. |
+
+### Permissions Deliberately Omitted
+
+| Permission | Why It Is Excluded |
+| --- | --- |
+| `cookies` | No need to read, set, or transmit cookies. All analysis is based on visible DOM text. |
+| `webRequest` | No network interception is required; the extension does not proxy or log HTTP traffic. |
+| `background` (persistent) | Manifest V3 service workers are event-driven, so a persistent background page is impossible, and long-lived socket polling is prohibited by the platform. |
+| `declarativeNetRequest` | No custom request rules are needed; it is not a blocker or a proxy. |
+| `browsingData` | Local data deletion is handled manually through a Settings option rather than blanket browser-data clearing. |
+| `downloads` | Exports are generated as Blob URLs triggered by the user, not via the `downloads` API. |
+
+### Optional Host Permissions for Website Analysis
+
+The Website Audit page fetches the business website to check title, meta description, H1, LocalBusiness schema, and NAP consistency. Because the target site can be any domain, `<all_urls>` is declared as an optional host permission.
+
+The Website Audit UI explicitly asks the user before the first fetch:
+
+```typescript
+// src/services/websiteAnalyzer.ts (proposed flow)
+async function fetchWebsite(url: string): Promise<WebsiteSnapshot | null> {
+  const allowed = await chrome.permissions.request({
+    origins: [new URL(url).origin + '/*'],
+  });
+
+  if (!allowed) {
+    return {
+      url,
+      fetchStatus: 'denied',
+      error: 'User did not grant permission to fetch this website.',
+    } as WebsiteSnapshot;
+  }
+
+  // Proceed with fetch using activeTab/scripting or background fetch if CSP allows
+}
+```
+
+If the user denies the permission, the Website Audit page shows:
+
+```text
+⚠ Website analysis requires permission to fetch this site.
+[Grant Permission] [Skip and use Maps data only]
+```
+
+### Build and Load in Developer Mode
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Build the extension:
+
+```bash
+npm run build
+```
+
+The Vite config produces the following output in `dist/`:
+
+```text
+dist/
+├── manifest.json
+├── background/
+│   └── index.js
+├── content/
+│   ├── index.js
+│   └── styles.css
+├── popup/
+│   ├── index.html
+│   └── index.js
+└── icons/
+    ├── icon-16.png
+    ├── icon-32.png
+    ├── icon-48.png
+    └── icon-128.png
+```
+
+3. Load into Chrome:
+
+```text
+Open Chrome → Extensions → Toggle Developer Mode → Load unpacked → Select the dist folder
+```
+
+4. Verify the extension icon appears in the toolbar. Open `https://www.google.com/maps/search/restaurants+near+me` and confirm the icon badge updates.
+
+> Note: `tabs` is included because the popup needs to know whether the active tab is a Google Maps page. If `activeTab` alone becomes sufficient once Manifest V3 support matures, `tabs` can be downgraded to optional.

@@ -1,0 +1,147 @@
+---
+title: "GBP Auditor: Competitor Analysis and Search Audit"
+description: "Learn how GBP Auditor extracts competitor data from Maps search results, builds competitor tables, runs comparison reports, and audits search result pages with Best, Average, and Missing highlighting."
+sidebarTitle: "Competitors and Search"
+---
+
+GBP Auditor extracts competitor information from publicly visible Google Maps search results to help Local SEO professionals benchmark a business against nearby listings. The tool supports two core workflows: auditing a Maps search results page directly, and comparing a target business against one or more competitors. All data is read from the DOM. The extension never simulates clicks, modifies GBP data, or scrapes beyond what is visible to the user.
+
+## Maps Search Audit panel
+
+When a user opens the extension on a Google Maps search results page, the Maps Search Audit panel activates automatically. It scans the visible result list and extracts the following per listing:
+
+- Position in results
+- Business name
+- Rating
+- Review count
+- Primary category
+- Website, if visible
+- Audit score, if the business has been audited previously in the current session
+
+### Panel contents
+
+The panel header shows:
+
+- **Results detected**: number of competitor listings found
+- **Average rating**: mean rating across detected results
+- **Average reviews**: mean review count across detected results
+- **Top category**: the most common primary category among results
+
+Below the header, a table shows each competitor:
+
+| Position | Business | Rating | Reviews | Category | Website | Audit |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | Bright Dental | 4.7 | 89 | Dental clinic | brightdental.com | 82 |
+| 2 | Smile Studio | 4.5 | 62 | Cosmetic dentist | smilestudio.com | 75 |
+
+Clicking a row opens the competitor's business panel for deeper inspection.
+
+## Competitor extraction
+
+Competitor data is extracted from the visible search results cards on Google Maps. The extraction targets standard result selectors and falls back to aria-labels and text patterns if the DOM structure varies.
+
+### Fields extracted
+
+- **Rank**: the visible position in the results list
+- **Name**: the business title
+- **Category**: the primary category shown
+- **Rating**: the star rating
+- **Reviews**: the review count
+- **Website**: the website link, if visible
+- **Phone**: the phone number, if visible
+- **Address**: the address line, if visible
+- **Services**: any services listed on the card, if visible
+
+If a field is not present, the extension records **"N/A"**. It does not attempt to open competitor detail pages automatically.
+
+### Proposed data shape
+
+```ts
+interface Competitor {
+  rank: number;
+  name: string;
+  category: string;
+  rating: number;
+  reviewCount: number;
+  website?: string;
+  phone?: string;
+  address?: string;
+  services?: string[];
+}
+```
+
+## Competitor table
+
+The Competitors page displays all extracted competitors in a sortable and filterable table. The table supports the following actions per row:
+
+- **Open**: open the competitor's Maps page in a new tab
+- **Audit**: run a full audit on the competitor if the user navigates to its page
+- **Compare**: add the competitor to a comparison set with the target business
+
+The table columns mirror the extracted fields above, with the addition of an **Audit Score** column if a prior audit exists.
+
+## Comparison page
+
+The Comparison page shows a side-by-side analysis of the target business and up to three selected competitors. Each row compares a single signal and highlights the best value, the average, and any missing values.
+
+### Comparison rows
+
+| Signal | Target | Competitor A | Competitor B | Best | Average |
+| --- | --- | --- | --- | --- | --- |
+| Primary Category | Dental clinic | Cosmetic dentist | Dental clinic | Dental clinic | N/A |
+| Additional Categories | 2 | 5 | 3 | 5 | 3.3 |
+| Rating | 4.2 | 4.7 | 4.5 | 4.7 | 4.5 |
+| Reviews | 47 | 89 | 62 | 89 | 66 |
+| Services | 4 | 8 | 6 | 8 | 6 |
+| Website | Yes | Yes | No | Yes | N/A |
+| Hours | Complete | Complete | Incomplete | Complete | N/A |
+| Attributes | 3 | 7 | 5 | 7 | 5 |
+| Photos | Approx 6 | Approx 15 | Approx 10 | Approx 15 | Approx 10 |
+| Description | Present | Present | Missing | Present | N/A |
+| Audit Score | 68 | 82 | 75 | 82 | 75 |
+
+### Highlighting rules
+
+- **Best**: the highest numeric value, or "Yes" vs "No", is highlighted in green
+- **Average**: the mean numeric value is shown for context
+- **Missing**: any missing value is marked with a gray badge and the text **"Missing"**
+
+For categorical fields such as Primary Category, **Best** is determined by frequency among the selected competitors, not by an absolute hierarchy. The label should read **"Most common"** rather than "Best" for non-numeric rows.
+
+## No causation rule
+
+All competitor analysis is descriptive, not predictive. The extension must never claim that a competitor ranks higher **because** of a specific attribute. For example, if Competitor A has more photos and ranks higher, the message must be:
+
+> "Competitor A has more photos and ranks higher. This is an observation, not proof of causation."
+
+Similarly, the Comparison page must include a footer note:
+
+> "Comparisons are based on publicly visible data. Higher values do not guarantee better rankings or business outcomes."
+
+## Search result page support
+
+If the current page is not a Google Maps search results page, the Search Audit panel shows **"This page is not supported."** The panel also detects when the user scrolls and new results load, appending newly visible competitors to the table without re-scanning the entire list.
+
+### Performance note
+
+Competitor extraction is debounced and scoped to the visible results container. The MutationObserver listens only for child list changes within the results list, not the entire page. Parsed results are cached per session to avoid repeated DOM queries.
+
+## Proposed comparison data shape
+
+```ts
+interface ComparisonRow {
+  signal: string;
+  targetValue: string | number | boolean;
+  competitorValues: (string | number | boolean | null)[];
+  bestValue: string | number | boolean | null;
+  averageValue: number | null;
+  isMissing: boolean[];
+}
+
+interface ComparisonReport {
+  targetBusiness: BusinessProfile;
+  competitors: Competitor[];
+  rows: ComparisonRow[];
+  generatedAt: string;
+}
+```

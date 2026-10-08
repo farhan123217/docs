@@ -1,0 +1,153 @@
+---
+title: "GBP Auditor: Category and Service Analysis"
+description: "Explore how GBP Auditor analyzes primary and additional categories, manages the Category Research page, and handles service extraction and the Service Editor modal."
+sidebarTitle: "Categories and Services"
+---
+
+GBP Auditor extracts and evaluates the categories and services visible on a Google Business Profile. The analysis helps Local SEO professionals understand how a business is classified, compare classifications against competitors, and identify potential category and service additions. All data comes from publicly visible Maps page content. The extension never writes to Google or claims that its outputs are official Google data.
+
+## Primary category analysis
+
+The primary category is the single most important classification Google shows for a business. GBP Auditor evaluates it across four dimensions:
+
+- **Relevance**: does the category align with the business name and visible services?
+- **Specificity**: is the category too broad or generic (e.g., "Service establishment")?
+- **Intent match**: does the category reflect the likely customer search intent?
+- **Competitor differences**: do top-ranked competitors use a different primary category?
+
+Each check returns a status and explanation. For example, if the primary category is "Dental clinic" and the business name clearly indicates a dental practice, the relevance and intent checks return **PASS**. If competitors all use "Cosmetic dentist" while the target uses "Dental clinic", the extension marks an **OPPORTUNITY** with the message: "Top competitors use a different primary category."
+
+### Proposed data shape
+
+```ts
+interface PrimaryCategoryAnalysis {
+  category: string;
+  relevance: Status;
+  specificity: Status;
+  intentMatch: Status;
+  competitorDiff: Status;
+  explanation: string;
+  competitorCategories: string[];
+}
+```
+
+## Additional categories analysis
+
+Additional categories are the secondary classifications visible on a profile. GBP Auditor checks whether any are present, how many are listed, and whether top competitors use categories the target business does not.
+
+- **Presence**: at least one additional category detected
+- **Coverage**: three or more additional categories is ideal; fewer triggers **WARNING**
+- **Competitor gap**: categories used by competitors but not by the target trigger **OPPORTUNITY**
+
+Example message: "Only 2 additional categories detected. Up to 9 are typically supported."
+
+### Quick actions
+
+From both the primary and additional category views, users can:
+
+- **Copy Category**: copy a category name to the clipboard for use elsewhere
+- **Add to Research List**: send a category to the Category Research page for deeper analysis
+
+## Category Research page
+
+The Category Research page is a standalone tool for researching categories across multiple businesses. It is accessed from the primary navigation under **Categories**.
+
+### Features
+
+- **Search**: type a category name to filter the list
+- **Category details**: view the category name, businesses observed using it, frequency count, and competitor usage
+- **Potential relevance**: a heuristic score based on how often the category appears among competitors
+- **Sort options**:
+  - Most Used
+  - Least Used
+  - Alphabetical
+
+### Important note
+
+All frequency and usage data in Category Research are derived from locally observed Maps pages, not from official Google data. The UI must make this clear with a notice such as: "Category usage is based on observed profiles, not official Google statistics."
+
+### Proposed data shape
+
+```ts
+interface CategoryResearchItem {
+  name: string;
+  observedCount: number;
+  competitorUsage: number;
+  potentialRelevance: "high" | "medium" | "low";
+}
+```
+
+## Services page
+
+The Services page displays services visible on a business profile and allows users to build a custom service list for audit and reporting purposes. Services are read-only from Google; the extension never writes services back to a GBP.
+
+### Visible fields
+
+Each service row shows:
+
+- **Name**: the service title
+- **Price**: if visible on the profile
+- **Description**: if visible
+- **Category**: the service category, if shown
+
+### Table actions
+
+Users can perform the following actions on each service row:
+
+- **Add**: add a new service manually
+- **Edit**: modify a locally stored service
+- **Delete**: remove a locally stored service
+- **Copy**: copy service details to clipboard
+- **Export**: export the full service list
+
+All add, edit, and delete operations affect only local data stored in the extension.
+
+## Service Editor modal
+
+The Service Editor modal opens when a user adds or edits a service. It contains a form with validation rules and a category dropdown.
+
+### Fields
+
+| Field | Required | Validation |
+| --- | --- | --- |
+| Name | Yes | non-empty, max 100 characters |
+| Price | No | free-form text, max 50 characters |
+| Description | No | max 500 characters |
+| Category | Yes | selected from dropdown of observed categories |
+
+### Actions
+
+- **Save**: validates the form and stores the service locally
+- **Cancel**: closes the modal without saving
+
+### Example modal flow
+
+1. User clicks **Add Service**
+2. Service Editor modal opens with empty fields
+3. User fills Name, selects Category, optionally adds Price and Description
+4. User clicks **Save**
+5. Modal closes and the new service appears in the Services table
+
+## Recommended services
+
+GBP Auditor can suggest services based only on observable competitor information. For example, if three top competitors list "Teeth whitening" and the target business does not, the extension may surface it as a **recommended service** with a label like: "Observed on 3 competitors."
+
+Recommended services are never fabricated. If competitor data is unavailable, no recommendations are shown. Users can add a recommended service to their local service list with one click.
+
+### Proposed service data shape
+
+```ts
+interface Service {
+  id: string;
+  name: string;
+  price?: string;
+  description?: string;
+  category: string;
+  source: "detected" | "manual" | "recommended";
+  competitorCount?: number;
+}
+```
+
+## No write access to Google
+
+GBP Auditor is strictly read-only. It extracts data from the public Maps interface, compares it, and presents opportunities. It does not simulate clicks, submit forms, or otherwise modify a Google Business Profile. Any service changes made in the Service Editor are stored locally and must be applied manually by the business owner inside Google's own tools.
